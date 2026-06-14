@@ -1,6 +1,7 @@
 import { ItemView, Notice, setIcon, WorkspaceLeaf } from "obsidian";
-import { ChatMessage, ChatMessageDetail, ReasoningEffort } from "./types";
-import OpenCodeChatPlugin from "./plugin";
+import { ChatMessage, ChatMessageDetail, ReasoningEffort } from "../shared/types";
+import OpenCodeChatPlugin from "../plugin/plugin";
+import { effortLabel, formatError, selectedModelValue, updateEffortFavorite, updateStringFavorite } from "./helpers";
 
 export const VIEW_TYPE_OPENCODE_CHAT = "opencode-chat-view";
 
@@ -154,9 +155,14 @@ export class OpenCodeChatView extends ItemView {
     this.updateControls();
 
     try {
-      const response = await this.plugin.sendChatMessage(text);
+      const updateAssistantMessage = (response: { text: string; details: ChatMessageDetail[] }): void => {
+        assistantMessage.text = response.text;
+        assistantMessage.details = response.details;
+        this.renderMessages();
+      };
+      const response = await this.plugin.sendChatMessage(text, updateAssistantMessage);
       assistantMessage.text = response.text;
-      assistantMessage.details = mergeDetails(assistantMessage.details ?? [], response.details);
+      assistantMessage.details = response.details;
       this.setStatus("");
     } catch (error) {
       const message = formatError(error);
@@ -227,10 +233,12 @@ export class OpenCodeChatView extends ItemView {
         cls: "opencode-chat-detail-summary",
       });
       this.renderDetailSummary(detailEl, detail);
-      detailEl.createEl("pre", {
-        cls: "opencode-chat-detail-text",
-        text: detail.text,
-      });
+      if (detail.text) {
+        detailEl.createEl("pre", {
+          cls: "opencode-chat-detail-text",
+          text: detail.text,
+        });
+      }
     }
   }
 
@@ -241,7 +249,7 @@ export class OpenCodeChatView extends ItemView {
     }
 
     const iconEl = summaryEl.createSpan({ cls: "opencode-chat-detail-icon" });
-    setIcon(iconEl, detail.kind === "tool" ? "terminal" : "lightbulb");
+    setIcon(iconEl, detail.kind === "tool" ? "arrow-right" : "lightbulb");
     summaryEl.createSpan({
       cls: "opencode-chat-detail-title",
       text: detail.kind === "reasoning" ? "Thinking" : detail.title,
@@ -473,14 +481,6 @@ interface PickerMenuConfig {
   onToggleFavorite: (value: string, enabled: boolean) => Promise<void>;
 }
 
-function selectedModelValue(providerID: string, modelID: string): string {
-  return providerID && modelID ? `${providerID}/${modelID}` : "";
-}
-
-function effortLabel(value: ReasoningEffort): string {
-  return value || "default";
-}
-
 function sortSelectedFirst(options: PickerOption[], selectedValue: string): PickerOption[] {
   if (!selectedValue) {
     return options;
@@ -495,31 +495,4 @@ function sortSelectedFirst(options: PickerOption[], selectedValue: string): Pick
     }
     return 0;
   });
-}
-
-function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function mergeDetails(
-  currentDetails: ChatMessageDetail[],
-  incomingDetails: ChatMessageDetail[],
-): ChatMessageDetail[] {
-  return [...currentDetails, ...incomingDetails];
-}
-
-function updateStringFavorite(values: string[], value: string, enabled: boolean): string[] {
-  if (enabled) {
-    return values.includes(value) ? values : [...values, value];
-  }
-
-  return values.filter((entry) => entry !== value);
-}
-
-function updateEffortFavorite(values: ReasoningEffort[], value: ReasoningEffort, enabled: boolean): ReasoningEffort[] {
-  if (enabled) {
-    return values.includes(value) ? values : [...values, value];
-  }
-
-  return values.filter((entry) => entry !== value);
 }

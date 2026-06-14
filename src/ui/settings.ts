@@ -1,7 +1,8 @@
 import { App, Notice, PluginSettingTab, setIcon, Setting } from "obsidian";
-import { normalizeServerAddress } from "./address";
-import OpenCodeChatPlugin from "./plugin";
-import { ReasoningEffort } from "./types";
+import { normalizeServerAddress } from "../opencode/address";
+import OpenCodeChatPlugin from "../plugin/plugin";
+import { ReasoningEffort } from "../shared/types";
+import { effortLabel, formatError, selectedModelValue, updateEffortFavorite, updateStringFavorite } from "./helpers";
 
 export class OpenCodeChatSettingTab extends PluginSettingTab {
   constructor(app: App, private readonly plugin: OpenCodeChatPlugin) {
@@ -225,32 +226,4 @@ export class OpenCodeChatSettingTab extends PluginSettingTab {
       });
     }
   }
-}
-
-function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function selectedModelValue(providerID: string, modelID: string): string {
-  return providerID && modelID ? `${providerID}/${modelID}` : "";
-}
-
-function effortLabel(value: ReasoningEffort): string {
-  return value || "default";
-}
-
-function updateStringFavorite(values: string[], value: string, enabled: boolean): string[] {
-  if (enabled) {
-    return values.includes(value) ? values : [...values, value];
-  }
-
-  return values.filter((entry) => entry !== value);
-}
-
-function updateEffortFavorite(values: ReasoningEffort[], value: ReasoningEffort, enabled: boolean): ReasoningEffort[] {
-  if (enabled) {
-    return values.includes(value) ? values : [...values, value];
-  }
-
-  return values.filter((entry) => entry !== value);
 }

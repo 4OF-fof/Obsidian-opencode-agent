@@ -1,7 +1,7 @@
 import { ChildProcess, spawn } from "node:child_process";
 import { parseServerAddress } from "./address";
-import { OpenCodeClient } from "./opencode";
-import { OpenCodeChatSettings } from "./types";
+import { OpenCodeClient } from "./client";
+import { OpenCodeChatSettings } from "../shared/types";
 
 export class OpenCodeServerManager {
   private process: ChildProcess | null = null;

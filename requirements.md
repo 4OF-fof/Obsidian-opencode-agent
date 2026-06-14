@@ -91,7 +91,8 @@ The first version must not include:
 - `GET /global/health` for connection testing.
 - `GET /provider` or equivalent SDK method for provider/model discovery.
 - `POST /session` to create a chat session.
-- `POST /session/:id/message` to send a message and receive a response.
+- `POST /session/:id/prompt_async` to send a message.
+- `GET /session/:id/message` to poll assistant progress and final output.
 
 ## Open Questions
 

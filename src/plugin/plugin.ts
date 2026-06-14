@@ -1,10 +1,10 @@
 import { Notice, Plugin } from "obsidian";
-import { normalizeServerAddress } from "./address";
-import { OpenCodeAssistantResponse, OpenCodeClient } from "./opencode";
-import { OpenCodeServerManager } from "./server";
-import { OpenCodeChatSettingTab } from "./settings";
-import { DEFAULT_SETTINGS, OpenCodeChatSettings, OpenCodeModelOption } from "./types";
-import { OpenCodeChatView, VIEW_TYPE_OPENCODE_CHAT } from "./view";
+import { normalizeServerAddress } from "../opencode/address";
+import { OpenCodeAssistantResponse, OpenCodeClient } from "../opencode/client";
+import { OpenCodeServerManager } from "../opencode/server-manager";
+import { OpenCodeChatSettingTab } from "../ui/settings";
+import { DEFAULT_SETTINGS, OpenCodeChatSettings, OpenCodeModelOption } from "../shared/types";
+import { OpenCodeChatView, VIEW_TYPE_OPENCODE_CHAT } from "../ui/view";
 
 export default class OpenCodeChatPlugin extends Plugin {
   settings: OpenCodeChatSettings = { ...DEFAULT_SETTINGS };
@@ -102,7 +102,10 @@ export default class OpenCodeChatPlugin extends Plugin {
     return await new OpenCodeClient(this.settings).listModels();
   }
 
-  async sendChatMessage(text: string): Promise<OpenCodeAssistantResponse> {
+  async sendChatMessage(
+    text: string,
+    onUpdate?: (response: OpenCodeAssistantResponse) => void,
+  ): Promise<OpenCodeAssistantResponse> {
     await this.server.ensureStarted();
     const client = new OpenCodeClient(this.settings);
 
@@ -110,7 +113,7 @@ export default class OpenCodeChatPlugin extends Plugin {
       this.sessionId = await client.createSession();
     }
 
-    return await client.sendMessage(this.sessionId, text);
+    return await client.sendMessage(this.sessionId, text, onUpdate);
   }
 
   private async activateView(): Promise<void> {

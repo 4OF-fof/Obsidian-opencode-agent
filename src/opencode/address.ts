@@ -1,4 +1,4 @@
-import { ServerAddress } from "./types";
+import { ServerAddress } from "../shared/types";
 
 export function parseServerAddress(value: string): ServerAddress {
   const input = value.trim() || "localhost:4096";
