@@ -36,6 +36,13 @@ export const REASONING_EFFORT_OPTIONS: Array<{ value: ReasoningEffort; label: st
 export interface ChatMessage {
   role: "user" | "assistant" | "error";
   text: string;
+  details?: ChatMessageDetail[];
+}
+
+export interface ChatMessageDetail {
+  kind: "reasoning" | "tool" | "other";
+  title: string;
+  text: string;
 }
 
 export interface OpenCodeModelOption {

@@ -2,20 +2,19 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  gap: 10px;
-  padding: 14px;
-  background:
-    linear-gradient(180deg, var(--background-primary), var(--background-secondary-alt));
+  gap: 0;
+  padding: 0;
+  background: var(--background-primary);
 }
 
 .opencode-chat-history {
-  background: color-mix(in srgb, var(--background-primary) 82%, transparent);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
+  background: var(--background-primary);
+  border: 0;
+  border-radius: 0;
   flex: 1;
   overflow: auto;
-  padding: 12px;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--background-modifier-border) 55%, transparent);
+  padding: 8px 10px 24px;
+  box-shadow: none;
 }
 
 .opencode-chat-empty {
@@ -27,16 +26,13 @@
 .opencode-chat-message {
   display: flex;
   flex-direction: column;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
-.opencode-chat-message-user {
-  align-items: flex-end;
-}
-
+.opencode-chat-message-user,
 .opencode-chat-message-assistant,
 .opencode-chat-message-error {
-  align-items: flex-start;
+  align-items: stretch;
 }
 
 .opencode-chat-message-role {
@@ -47,21 +43,25 @@
 }
 
 .opencode-chat-message-text {
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   line-height: 1.5;
   margin: 0;
-  max-width: min(860px, 92%);
-  padding: 10px 12px;
+  max-width: 100%;
+  padding: 0 12px;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .opencode-chat-message-user .opencode-chat-message-text {
-  background: var(--interactive-accent);
-  border-color: color-mix(in srgb, var(--interactive-accent) 70%, var(--background-modifier-border));
-  color: var(--text-on-accent);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  color: var(--text-normal);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-small);
+  padding: 8px 10px;
 }
 
 .opencode-chat-message-error .opencode-chat-message-text {
@@ -69,11 +69,106 @@
   color: var(--text-error);
 }
 
+.opencode-chat-detail-summary {
+  cursor: pointer;
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+  min-height: 28px;
+  padding: 6px 10px;
+  user-select: none;
+}
+
+.opencode-chat-detail {
+  border-top: 0;
+  margin-left: 16px;
+  padding: 0 4px 10px 16px;
+  position: relative;
+}
+
+.opencode-chat-detail::before {
+  background: var(--background-modifier-border);
+  bottom: 0;
+  content: "";
+  left: 0;
+  position: absolute;
+  top: 14px;
+  width: 1px;
+}
+
+.opencode-chat-detail-summary {
+  align-items: center;
+  color: var(--text-muted);
+  display: inline-flex;
+  gap: 6px;
+  min-height: 24px;
+  padding: 7px 0 5px;
+}
+
+.opencode-chat-detail-summary::marker,
+.opencode-chat-detail-summary::-webkit-details-marker {
+  display: none;
+}
+
+.opencode-chat-detail-icon {
+  align-items: center;
+  background: var(--background-primary);
+  color: var(--text-muted);
+  display: inline-flex;
+  height: 16px;
+  justify-content: center;
+  margin-left: -22px;
+  position: relative;
+  width: 16px;
+  z-index: 1;
+}
+
+.opencode-chat-detail-icon svg {
+  height: 13px;
+  width: 13px;
+}
+
+.opencode-chat-detail-title {
+  font-size: var(--font-ui-small);
+}
+
+.opencode-chat-detail-reasoning .opencode-chat-detail-summary {
+  color: var(--text-muted);
+}
+
+.opencode-chat-detail-tool .opencode-chat-detail-summary {
+  color: var(--text-muted);
+}
+
+.opencode-chat-detail-text {
+  background: transparent;
+  border: 0;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 0 0 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.opencode-chat-detail-tool .opencode-chat-detail-text {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  color: var(--text-normal);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  padding: 8px 10px;
+}
+
 .opencode-chat-composer {
-  background: color-mix(in srgb, var(--background-primary) 90%, var(--background-secondary));
-  border: 1px solid color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
-  border-radius: 8px;
-  box-shadow: 0 8px 22px color-mix(in srgb, var(--background-modifier-box-shadow) 12%, transparent);
+  background: var(--background-primary);
+  border: 0;
+  border-top: 1px solid var(--background-modifier-border);
+  border-radius: 0;
+  box-shadow: none;
   display: grid;
   gap: 8px;
   padding: 10px 10px 8px;
@@ -84,7 +179,7 @@
   border: 0;
   box-shadow: none;
   line-height: 1.5;
-  min-height: 84px;
+  min-height: 56px;
   padding: 2px 4px;
   resize: none;
 }
@@ -375,8 +470,8 @@
 .opencode-chat-status {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
-  min-height: 16px;
-  padding: 0 2px;
+  min-height: 0;
+  padding: 0 10px;
 }
 
 .opencode-chat-settings-list {

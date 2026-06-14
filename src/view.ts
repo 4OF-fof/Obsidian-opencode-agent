@@ -1,5 +1,5 @@
 import { ItemView, Notice, setIcon, WorkspaceLeaf } from "obsidian";
-import { ChatMessage, ReasoningEffort } from "./types";
+import { ChatMessage, ChatMessageDetail, ReasoningEffort } from "./types";
 import OpenCodeChatPlugin from "./plugin";
 
 export const VIEW_TYPE_OPENCODE_CHAT = "opencode-chat-view";
@@ -45,6 +45,9 @@ export class OpenCodeChatView extends ItemView {
     const container = this.containerEl.children[1];
     container.empty();
     container.addClass("opencode-chat-view");
+
+    this.statusEl = container.createDiv({ cls: "opencode-chat-status" });
+    this.historyEl = container.createDiv({ cls: "opencode-chat-history" });
 
     const composerEl = container.createDiv({ cls: "opencode-chat-composer" });
     this.inputEl = composerEl.createEl("textarea", {
@@ -125,9 +128,6 @@ export class OpenCodeChatView extends ItemView {
     this.sendButtonEl.addEventListener("click", () => {
       void this.submit();
     });
-
-    this.statusEl = container.createDiv({ cls: "opencode-chat-status" });
-    this.historyEl = container.createDiv({ cls: "opencode-chat-history" });
     this.renderMessages();
     this.updatePickerLabels();
     void this.populateModelSelect();
@@ -147,17 +147,22 @@ export class OpenCodeChatView extends ItemView {
     this.pending = true;
     this.inputEl.value = "";
     this.messages.push({ role: "user", text });
+    const assistantMessage: ChatMessage = { role: "assistant", text: "", details: [] };
+    this.messages.push(assistantMessage);
     this.renderMessages();
     this.setStatus("Waiting for opencode...");
     this.updateControls();
 
     try {
       const response = await this.plugin.sendChatMessage(text);
-      this.messages.push({ role: "assistant", text: response });
+      assistantMessage.text = response.text;
+      assistantMessage.details = mergeDetails(assistantMessage.details ?? [], response.details);
       this.setStatus("");
     } catch (error) {
       const message = formatError(error);
-      this.messages.push({ role: "error", text: message });
+      assistantMessage.role = "error";
+      assistantMessage.text = message;
+      assistantMessage.details = [];
       this.setStatus("Request failed.");
       new Notice(`OpenCode request failed: ${message}`);
     } finally {
@@ -183,14 +188,16 @@ export class OpenCodeChatView extends ItemView {
       const messageEl = this.historyEl.createDiv({
         cls: `opencode-chat-message opencode-chat-message-${message.role}`,
       });
-      messageEl.createDiv({
-        cls: "opencode-chat-message-role",
-        text: roleLabel(message.role),
-      });
-      messageEl.createEl("pre", {
-        cls: "opencode-chat-message-text",
-        text: message.text,
-      });
+      if (message.role === "assistant" && message.details && message.details.length > 0) {
+        this.renderMessageDetails(messageEl, message.details);
+      }
+
+      if (message.text) {
+        messageEl.createEl("pre", {
+          cls: "opencode-chat-message-text",
+          text: message.text,
+        });
+      }
     }
 
     this.historyEl.scrollTop = this.historyEl.scrollHeight;
@@ -208,6 +215,37 @@ export class OpenCodeChatView extends ItemView {
 
   private setStatus(text: string): void {
     this.statusEl.setText(text);
+  }
+
+  private renderMessageDetails(parentEl: HTMLElement, details: ChatMessageDetail[]): void {
+    for (const detail of details) {
+      const detailEl = parentEl.createEl("details", {
+        cls: `opencode-chat-detail opencode-chat-detail-${detail.kind}`,
+        attr: { open: "" },
+      });
+      detailEl.createEl("summary", {
+        cls: "opencode-chat-detail-summary",
+      });
+      this.renderDetailSummary(detailEl, detail);
+      detailEl.createEl("pre", {
+        cls: "opencode-chat-detail-text",
+        text: detail.text,
+      });
+    }
+  }
+
+  private renderDetailSummary(detailEl: HTMLElement, detail: ChatMessageDetail): void {
+    const summaryEl = detailEl.querySelector(".opencode-chat-detail-summary");
+    if (!(summaryEl instanceof HTMLElement)) {
+      return;
+    }
+
+    const iconEl = summaryEl.createSpan({ cls: "opencode-chat-detail-icon" });
+    setIcon(iconEl, detail.kind === "tool" ? "terminal" : "lightbulb");
+    summaryEl.createSpan({
+      cls: "opencode-chat-detail-title",
+      text: detail.kind === "reasoning" ? "Thinking" : detail.title,
+    });
   }
 
   private async populateModelSelect(): Promise<void> {
@@ -459,18 +497,15 @@ function sortSelectedFirst(options: PickerOption[], selectedValue: string): Pick
   });
 }
 
-function roleLabel(role: ChatMessage["role"]): string {
-  if (role === "user") {
-    return "You";
-  }
-  if (role === "assistant") {
-    return "OpenCode";
-  }
-  return "Error";
-}
-
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function mergeDetails(
+  currentDetails: ChatMessageDetail[],
+  incomingDetails: ChatMessageDetail[],
+): ChatMessageDetail[] {
+  return [...currentDetails, ...incomingDetails];
 }
 
 function updateStringFavorite(values: string[], value: string, enabled: boolean): string[] {

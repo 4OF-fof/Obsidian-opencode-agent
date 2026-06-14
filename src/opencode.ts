@@ -1,6 +1,6 @@
 import { requestUrl, RequestUrlParam } from "obsidian";
 import { parseServerAddress } from "./address";
-import { OpenCodeChatSettings, OpenCodeModelOption, ReasoningEffort } from "./types";
+import { ChatMessageDetail, OpenCodeChatSettings, OpenCodeModelOption, ReasoningEffort } from "./types";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -30,7 +30,7 @@ export class OpenCodeClient {
     return id;
   }
 
-  async sendMessage(sessionId: string, text: string): Promise<string> {
+  async sendMessage(sessionId: string, text: string): Promise<OpenCodeAssistantResponse> {
     const body: JsonRecord = {
       parts: [{ type: "text", text }],
     };
@@ -47,7 +47,7 @@ export class OpenCodeClient {
       body: JSON.stringify(body),
     });
 
-    return extractAssistantText(response) || "(No text response)";
+    return extractAssistantResponse(response);
   }
 
   private async requestJson<T>(path: string, init: Partial<RequestUrlParam> = {}): Promise<T> {
@@ -80,6 +80,11 @@ export class OpenCodeClient {
     const { host, port } = parseServerAddress(this.settings.serverAddress);
     return `http://${host}:${port}`;
   }
+}
+
+export interface OpenCodeAssistantResponse {
+  text: string;
+  details: ChatMessageDetail[];
 }
 
 function extractModelOptions(value: unknown): OpenCodeModelOption[] {
@@ -178,10 +183,42 @@ function findModelRecords(provider: unknown): JsonRecord[] {
   return [];
 }
 
-function extractAssistantText(value: unknown): string {
-  const parts = readArrayProperty(value, "parts");
-  const texts = parts.flatMap((part) => collectAssistantTextPart(part));
-  return texts.join("\n").trim();
+function extractAssistantResponse(value: unknown): OpenCodeAssistantResponse {
+  const parts = readMessageParts(value);
+  const texts: string[] = [];
+  const details: ChatMessageDetail[] = [];
+
+  for (const part of parts) {
+    const textParts = collectAssistantTextPart(part);
+    if (textParts.length > 0) {
+      texts.push(...textParts);
+      continue;
+    }
+
+    const detail = collectAssistantDetailPart(part);
+    if (detail) {
+      details.push(detail);
+    }
+  }
+
+  return {
+    text: texts.join("\n").trim() || "(No text response)",
+    details,
+  };
+}
+
+function readMessageParts(value: unknown): unknown[] {
+  const direct = readArrayProperty(value, "parts");
+  if (direct.length > 0) {
+    return direct;
+  }
+
+  const message = readArrayProperty(readProperty(value, "message"), "parts");
+  if (message.length > 0) {
+    return message;
+  }
+
+  return readArrayProperty(readProperty(value, "data"), "parts");
 }
 
 function collectAssistantTextPart(value: unknown): string[] {
@@ -212,6 +249,178 @@ function collectAssistantTextPart(value: unknown): string[] {
   }
 
   return [];
+}
+
+function collectAssistantDetailPart(value: unknown): ChatMessageDetail | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const type = readStringProperty(value, "type") || "part";
+  if (shouldIgnoreDetailType(type)) {
+    return null;
+  }
+
+  const text = readDetailText(value);
+  if (!text) {
+    return null;
+  }
+
+  return {
+    kind: detailKindForType(type),
+    title: detailTitle(value, type),
+    text,
+  };
+}
+
+function detailKindForType(type: string): ChatMessageDetail["kind"] {
+  const normalized = normalizePartType(type);
+  if (
+    normalized.includes("reason") ||
+    normalized.includes("thinking") ||
+    normalized.includes("thought")
+  ) {
+    return "reasoning";
+  }
+
+  if (
+    normalized.includes("tool") ||
+    normalized.includes("function") ||
+    normalized.includes("command")
+  ) {
+    return "tool";
+  }
+
+  return "other";
+}
+
+function detailTitle(value: JsonRecord, type: string): string {
+  if (detailKindForType(type) === "tool") {
+    const state = readProperty(value, "state");
+    const input = readProperty(value, "input") ?? readProperty(state, "input");
+    return toolTitle(readStringProperty(value, "tool"), input);
+  }
+
+  const name =
+    readStringProperty(value, "title") ||
+    readStringProperty(value, "name") ||
+    readStringProperty(value, "tool") ||
+    readStringProperty(value, "toolName");
+  const kind = detailKindForType(type);
+  const label = kind === "reasoning" ? "Thinking" : kind === "tool" ? "Tool call" : "Detail";
+  return name ? `${label}: ${name}` : `${label}: ${type}`;
+}
+
+function readDetailText(value: JsonRecord): string {
+  const type = readStringProperty(value, "type");
+  if (detailKindForType(type) === "tool") {
+    return readToolDetailText(value);
+  }
+
+  const direct =
+    readStringProperty(value, "text") ||
+    readStringProperty(value, "content") ||
+    readStringProperty(value, "markdown") ||
+    readStringProperty(value, "message") ||
+    readStringProperty(value, "result") ||
+    readStringProperty(value, "output") ||
+    readStringProperty(value, "error");
+  if (direct) {
+    return direct;
+  }
+
+  const data = readProperty(value, "data");
+  if (isRecord(data)) {
+    const nested =
+      readStringProperty(data, "text") ||
+      readStringProperty(data, "content") ||
+      readStringProperty(data, "markdown") ||
+      readStringProperty(data, "message") ||
+      readStringProperty(data, "result") ||
+      readStringProperty(data, "output") ||
+      readStringProperty(data, "error");
+    if (nested) {
+      return nested;
+    }
+  }
+
+  return "";
+}
+
+function readToolDetailText(value: JsonRecord): string {
+  const data = readProperty(value, "data");
+  const state = readProperty(value, "state");
+  const args =
+    readProperty(value, "args") ??
+    readProperty(value, "arguments") ??
+    readProperty(value, "input") ??
+    readProperty(data, "args") ??
+    readProperty(state, "input");
+  const output =
+    readProperty(value, "output") ??
+    readProperty(data, "output") ??
+    readProperty(state, "output");
+  const error =
+    readProperty(value, "error") ??
+    readProperty(data, "error") ??
+    readProperty(state, "error");
+  return formatToolText(args, output, error);
+}
+
+function formatToolText(input: unknown, output: unknown, error: unknown): string {
+  const parts: string[] = [];
+
+  const command =
+    readStringProperty(input, "command") ||
+    readStringProperty(input, "cmd") ||
+    readStringProperty(input, "description");
+  if (command) {
+    parts.push(`Run Command\n${command}`);
+  } else if (input !== undefined) {
+    parts.push(`Input\n${formatDetailValue(input)}`);
+  }
+
+  if (output !== undefined) {
+    parts.push(`Output\n${formatDetailValue(output)}`);
+  }
+
+  if (error !== undefined) {
+    parts.push(`Error\n${formatDetailValue(error)}`);
+  }
+
+  return parts.join("\n\n");
+}
+
+function toolTitle(tool: string, input: unknown): string {
+  const command =
+    readStringProperty(input, "command") ||
+    readStringProperty(input, "cmd") ||
+    readStringProperty(input, "description");
+  if (command || tool === "bash" || tool === "shell") {
+    return "Run Command";
+  }
+  return tool ? `Tool call: ${tool}` : "Tool call";
+}
+
+function shouldIgnoreDetailType(type: string): boolean {
+  const normalized = normalizePartType(type);
+  return normalized === "stepstart" || normalized === "stepfinish";
+}
+
+function formatDetailValue(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value === undefined || value === null) {
+    return "";
+  }
+
+  return JSON.stringify(value, null, 2);
+}
+
+function normalizePartType(type: string): string {
+  return type.toLowerCase().replace(/[_-]/g, "");
 }
 
 function readProperty(value: unknown, key: string): unknown {

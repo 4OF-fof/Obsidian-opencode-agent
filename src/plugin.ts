@@ -1,6 +1,6 @@
 import { Notice, Plugin } from "obsidian";
 import { normalizeServerAddress } from "./address";
-import { OpenCodeClient } from "./opencode";
+import { OpenCodeAssistantResponse, OpenCodeClient } from "./opencode";
 import { OpenCodeServerManager } from "./server";
 import { OpenCodeChatSettingTab } from "./settings";
 import { DEFAULT_SETTINGS, OpenCodeChatSettings, OpenCodeModelOption } from "./types";
@@ -102,7 +102,7 @@ export default class OpenCodeChatPlugin extends Plugin {
     return await new OpenCodeClient(this.settings).listModels();
   }
 
-  async sendChatMessage(text: string): Promise<string> {
+  async sendChatMessage(text: string): Promise<OpenCodeAssistantResponse> {
     await this.server.ensureStarted();
     const client = new OpenCodeClient(this.settings);
 
