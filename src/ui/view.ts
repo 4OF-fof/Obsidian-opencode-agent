@@ -568,6 +568,8 @@ export class OpenCodeChatView extends ItemView {
       return;
     }
 
+    this.sessionHistoryEl.createDiv({ cls: "opencode-session-history-divider" });
+
     for (const session of this.sessionList) {
       const itemEl = this.sessionHistoryEl.createDiv({
         cls: "opencode-session-history-item",
@@ -733,15 +735,24 @@ export class OpenCodeChatView extends ItemView {
 
   private renderPickerMenuContents(menuEl: HTMLElement, config: PickerMenuConfig): void {
     menuEl.empty();
+    const newSessionOption = config.kind === "session" ? config.options.find((option) => option.value === "") : undefined;
+    const sectionOptions = newSessionOption ? config.options.filter((option) => option.value !== "") : config.options;
     const favoriteValues = new Set(config.favoriteValues);
     const favoriteOptions = sortSelectedFirst(
-      config.options.filter((option) => favoriteValues.has(option.value)),
+      sectionOptions.filter((option) => favoriteValues.has(option.value)),
       config.selectedValue,
     );
     const allOptions = sortSelectedFirst(
-      config.options.filter((option) => !favoriteValues.has(option.value)),
+      sectionOptions.filter((option) => !favoriteValues.has(option.value)),
       config.selectedValue,
     );
+
+    if (newSessionOption) {
+      this.renderPickerSection(menuEl, "", [newSessionOption], config);
+      if (sectionOptions.length > 0) {
+        menuEl.createDiv({ cls: "opencode-chat-picker-divider" });
+      }
+    }
 
     if (favoriteOptions.length > 0) {
       this.renderPickerSection(menuEl, "Favorites", favoriteOptions, config);
@@ -768,13 +779,15 @@ export class OpenCodeChatView extends ItemView {
         cls: `opencode-chat-picker-item${isNewSession ? " opencode-chat-picker-item-new" : ""}`,
         attr: { role: "button", tabindex: "0" },
       });
+      if (isNewSession) {
+        const newIconEl = itemEl.createSpan({ cls: "opencode-chat-picker-item-leading-icon" });
+        setIcon(newIconEl, "plus");
+      }
       itemEl.createSpan({ cls: "opencode-chat-picker-item-label", text: option.label });
 
       const selectedIconEl = itemEl.createSpan({ cls: "opencode-chat-picker-item-icon" });
       if (option.value === config.selectedValue) {
         setIcon(selectedIconEl, "check");
-      } else if (isNewSession) {
-        setIcon(selectedIconEl, "plus");
       } else {
         selectedIconEl.addClass("is-empty");
       }

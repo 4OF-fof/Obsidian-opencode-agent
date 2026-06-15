@@ -1,10 +1,10 @@
 import { ChildProcess, spawn } from "node:child_process";
 import { OpenCodeClient } from "./client";
+import { detectOpenCodeCommand } from "./command";
+import { parseServerAddress } from "./address";
 import { OpenCodeChatSettings } from "../shared/types";
 
-const MANAGED_SERVER_HOST = "127.0.0.1";
-const MANAGED_SERVER_PORT = 4097;
-const MANAGED_SERVER_ADDRESS = `${MANAGED_SERVER_HOST}:${MANAGED_SERVER_PORT}`;
+const DEFAULT_SERVER_ADDRESS = "127.0.0.1:4097";
 
 export class OpenCodeServerManager {
   private process: ChildProcess | null = null;
@@ -21,6 +21,12 @@ export class OpenCodeServerManager {
       return;
     }
 
+    const configuredServerAddress = this.getSettings().serverAddress.trim() || DEFAULT_SERVER_ADDRESS;
+    if (await this.isHealthy(configuredServerAddress)) {
+      this.activeServerAddress = configuredServerAddress;
+      return;
+    }
+
     if (!this.startPromise) {
       this.startPromise = this.start();
     }
@@ -31,7 +37,7 @@ export class OpenCodeServerManager {
   clientSettings(): OpenCodeChatSettings {
     return {
       ...this.getSettings(),
-      serverAddress: this.activeServerAddress ?? MANAGED_SERVER_ADDRESS,
+      serverAddress: this.activeServerAddress ?? this.getSettings().serverAddress,
     };
   }
 
@@ -50,21 +56,40 @@ export class OpenCodeServerManager {
 
   private async start(): Promise<void> {
     const settings = this.getSettings();
-    const command = settings.opencodeCommand.trim() || "opencode";
-    const env = { ...process.env };
+    const { host, port } = parseServerAddress(settings.serverAddress || DEFAULT_SERVER_ADDRESS);
+    const serverAddress = `${host}:${port}`;
+    let command = "opencode";
+
+    try {
+      command = await detectOpenCodeCommand();
+    } catch (error) {
+      throw new Error(commandResolutionFailureMessage(error));
+    }
+
     const cwd = this.getWorkingDirectory();
-    this.activeServerAddress = MANAGED_SERVER_ADDRESS;
+    this.activeServerAddress = serverAddress;
     this.process = spawn(
       command,
-      ["serve", "--hostname", MANAGED_SERVER_HOST, "--port", String(MANAGED_SERVER_PORT)],
+      ["serve", "--hostname", host, "--port", String(port)],
       {
         cwd,
-        env,
         shell: true,
-        stdio: "ignore",
+        stdio: ["ignore", "ignore", "pipe"],
         windowsHide: true,
       },
     );
+
+    let stderr = "";
+    let processError: Error | null = null;
+    this.process.stderr?.on("data", (data: Buffer) => {
+      stderr = `${stderr}${data.toString()}`.slice(-2000);
+    });
+
+    this.process.once("error", (error) => {
+      processError = error;
+      this.process = null;
+      this.startPromise = null;
+    });
 
     this.process.once("exit", () => {
       this.process = null;
@@ -75,7 +100,7 @@ export class OpenCodeServerManager {
       await this.waitUntilHealthy(this.activeServerAddress);
     } catch (error) {
       this.stop();
-      throw error;
+      throw new Error(connectionFailureMessage(command, serverAddress, processError ?? error, stderr));
     }
   }
 
@@ -115,4 +140,28 @@ function sleep(ms: number): Promise<void> {
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function connectionFailureMessage(
+  command: string,
+  serverAddress: string,
+  error: unknown,
+  stderr: string,
+): string {
+  const detail = formatError(error);
+  const output = stderr.trim();
+  return [
+    `Unable to connect to opencode at ${serverAddress}.`,
+    `Tried to start: ${command} serve.`,
+    output || detail,
+    "Make sure opencode is installed and discoverable from your login shell.",
+  ].filter(Boolean).join(" ");
+}
+
+function commandResolutionFailureMessage(error: unknown): string {
+  return [
+    "Unable to find opencode command.",
+    formatError(error),
+    "Make sure opencode is installed and discoverable from your login shell.",
+  ].filter(Boolean).join(" ");
 }

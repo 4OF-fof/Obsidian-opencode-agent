@@ -1,6 +1,5 @@
 export interface OpenCodeChatSettings {
   serverAddress: string;
-  opencodeCommand: string;
   providerID: string;
   modelID: string;
   reasoningEffort: ReasoningEffort;
@@ -10,7 +9,6 @@ export interface OpenCodeChatSettings {
 
 export const DEFAULT_SETTINGS: OpenCodeChatSettings = {
   serverAddress: "127.0.0.1:4097",
-  opencodeCommand: "opencode",
   providerID: "",
   modelID: "",
   reasoningEffort: "",
