@@ -8,4 +8,9 @@ export default class OpenCodeAgentPlugin extends OpenCodeChatPlugin {
     await super.onload();
     this.agentConfigManager.onload();
   }
+
+  onunload(): void {
+    this.agentConfigManager.onunload();
+    super.onunload();
+  }
 }

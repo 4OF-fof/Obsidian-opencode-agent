@@ -107,7 +107,7 @@ export class AgentFileIcons {
   private listAgentFiles(): TFile[] {
     return this.plugin.app.vault
       .getMarkdownFiles()
-      .filter((file) => file.name === "AGENTS.md")
+      .filter((file) => file.name.toLowerCase() === "agents.md")
       .sort((a, b) => a.path.localeCompare(b.path));
   }
 }
