@@ -363,11 +363,8 @@ export class OpenCodeChatView extends ItemView {
   }
 
   private renderMessageText(parentEl: HTMLElement, message: ChatMessage): void {
-    const wrapperEl = parentEl.createDiv({ cls: "opencode-chat-copyable" });
-    this.addCopyButton(wrapperEl, message.text);
-
     if (message.role === "assistant") {
-      const textEl = wrapperEl.createDiv({
+      const textEl = parentEl.createDiv({
         cls: "opencode-chat-message-text opencode-chat-message-markdown opencode-chat-final markdown-rendered",
       });
       void MarkdownRenderer.renderMarkdown(normalizeMarkdownText(message.text), textEl, "", this).catch(() => {
@@ -376,7 +373,7 @@ export class OpenCodeChatView extends ItemView {
       return;
     }
 
-    wrapperEl.createEl("pre", {
+    parentEl.createEl("pre", {
       cls: "opencode-chat-message-text",
       text: message.text,
     });
@@ -414,28 +411,6 @@ export class OpenCodeChatView extends ItemView {
       cls: "opencode-chat-detail-title",
       text: detail.kind === "reasoning" ? "Thinking" : detail.title,
     });
-  }
-
-  private addCopyButton(parentEl: HTMLElement, text: string): void {
-    const buttonEl = parentEl.createEl("button", {
-      cls: "opencode-chat-copy",
-      attr: { type: "button", "aria-label": "Copy message" },
-    });
-    setIcon(buttonEl, "copy");
-    buttonEl.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      void this.copyText(text);
-    });
-  }
-
-  private async copyText(text: string): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(text);
-      new Notice("Copied.");
-    } catch (error) {
-      new Notice(`Unable to copy: ${formatError(error)}`);
-    }
   }
 
   private async populateModelSelect(): Promise<void> {
@@ -785,11 +760,13 @@ export class OpenCodeChatView extends ItemView {
       }
       itemEl.createSpan({ cls: "opencode-chat-picker-item-label", text: option.label });
 
-      const selectedIconEl = itemEl.createSpan({ cls: "opencode-chat-picker-item-icon" });
-      if (option.value === config.selectedValue) {
-        setIcon(selectedIconEl, "check");
-      } else {
-        selectedIconEl.addClass("is-empty");
+      if (!isNewSession) {
+        const selectedIconEl = itemEl.createSpan({ cls: "opencode-chat-picker-item-icon" });
+        if (option.value === config.selectedValue) {
+          setIcon(selectedIconEl, "check");
+        } else {
+          selectedIconEl.addClass("is-empty");
+        }
       }
 
       if (config.allowFavorite(option.value)) {
@@ -808,7 +785,7 @@ export class OpenCodeChatView extends ItemView {
             favoriteValues: this.currentFavoriteValuesFor(config),
           });
         });
-      } else {
+      } else if (!isNewSession) {
         itemEl.createSpan({ cls: "opencode-chat-picker-favorite-placeholder" });
       }
 
