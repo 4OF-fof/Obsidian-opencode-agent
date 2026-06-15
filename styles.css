@@ -71,6 +71,18 @@
   width: 15px;
 }
 
+.opencode-chat-header-title {
+  color: var(--text-normal);
+  flex: 1;
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .opencode-chat-empty {
   color: var(--text-muted);
   padding: 10px;
@@ -80,7 +92,23 @@
 .opencode-chat-message {
   display: flex;
   flex-direction: column;
-  margin-bottom: 14px;
+  margin-bottom: 8px;
+}
+
+.opencode-chat-message-user {
+  margin-bottom: 4px;
+}
+
+.opencode-chat-message-details-only {
+  margin-bottom: 0;
+}
+
+.opencode-chat-message-details-only + .opencode-chat-message-details-only {
+  margin-top: 0;
+}
+
+.opencode-chat-message-details-only + .opencode-chat-message-final {
+  margin-top: 0;
 }
 
 .opencode-chat-message-user,
@@ -131,6 +159,11 @@
   padding-right: 34px;
 }
 
+.opencode-chat-copyable > .opencode-chat-final {
+  padding-left: 0 !important;
+  padding-right: 34px !important;
+}
+
 .opencode-chat-copy {
   --button-radius: 0;
   --button-shadow: none;
@@ -166,6 +199,10 @@
   opacity: 1;
 }
 
+.opencode-chat-copyable:has(.opencode-chat-final) > .opencode-chat-copy {
+  top: 32px;
+}
+
 .opencode-chat-copy:hover,
 .opencode-chat-copy:focus,
 .opencode-chat-copy:focus-visible {
@@ -184,18 +221,32 @@
 .opencode-chat-message-markdown {
   font-family: var(--font-text);
   font-size: var(--font-text-size);
+  padding-left: 0 !important;
+  white-space: normal;
 }
 
-.opencode-chat-message-markdown > :first-child {
+.opencode-chat-message-assistant > .opencode-chat-detail:first-child {
   margin-top: 0;
-}
-
-.opencode-chat-message-markdown > :last-child {
-  margin-bottom: 0;
 }
 
 .opencode-chat-message-markdown pre {
   white-space: pre-wrap;
+}
+
+.opencode-chat-final {
+  border-top: 1px solid var(--background-modifier-border);
+  margin-top: 6px;
+  padding-top: 8px !important;
+}
+
+.opencode-chat-final::before {
+  color: var(--text-muted);
+  content: "Response";
+  display: block;
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  margin: 0 0 6px;
 }
 
 .opencode-chat-detail-summary {
@@ -205,26 +256,38 @@
   display: inline-flex;
   font-size: var(--font-ui-smaller);
   gap: 6px;
-  line-height: 1.4;
+  height: 24px;
+  line-height: 24px;
   min-height: 24px;
-  padding: 7px 0 5px;
+  padding: 0 0 0 2px;
   user-select: none;
 }
 
 .opencode-chat-detail {
   border-top: 0;
-  margin-left: 16px;
-  padding: 0 4px 10px 16px;
+  box-sizing: border-box;
+  margin: 0 0 4px 0;
+  min-height: 24px;
+  overflow: visible;
+  padding: 0 4px 0 18px;
   position: relative;
+}
+
+.opencode-chat-detail:not([open]) {
+  height: 24px;
+}
+
+.opencode-chat-detail + .opencode-chat-detail {
+  margin-top: 0;
 }
 
 .opencode-chat-detail::before {
   background: var(--background-modifier-border);
-  bottom: 14px;
+  bottom: 0;
   content: "";
   left: 0;
   position: absolute;
-  top: 28px;
+  top: 24px;
   width: 1px;
 }
 
@@ -246,11 +309,13 @@
   background: var(--background-primary);
   color: var(--text-muted);
   display: inline-flex;
-  height: 16px;
+  flex: 0 0 auto;
+  height: 18px;
   justify-content: center;
-  margin-left: -22px;
+  margin-left: -18px;
+  overflow: visible;
   position: relative;
-  width: 16px;
+  width: 18px;
   z-index: 1;
 }
 
@@ -261,6 +326,7 @@
 
 .opencode-chat-detail-title {
   font-size: var(--font-ui-small);
+  line-height: 24px;
 }
 
 .opencode-chat-detail-text {
@@ -272,7 +338,7 @@
   margin: 0;
   max-height: 320px;
   overflow: auto;
-  padding: 0 0 4px;
+  padding: 2px 0 6px;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -288,7 +354,7 @@
 }
 
 .opencode-chat-detail-tool .opencode-chat-detail-text-wrap {
-  margin-left: -16px;
+  margin-left: -18px;
 }
 
 .opencode-chat-composer {
@@ -483,6 +549,10 @@
 .opencode-chat-picker-item:focus {
   background: var(--background-modifier-hover);
   outline: none;
+}
+
+.opencode-chat-picker-item-new {
+  color: var(--text-accent);
 }
 
 .opencode-chat-picker-item-label {
@@ -680,12 +750,18 @@
   gap: 2px;
   min-height: 38px;
   padding: 7px 8px;
+  position: relative;
 }
 
 .opencode-session-history-item:hover,
 .opencode-session-history-item:focus {
   background: var(--background-modifier-hover);
   outline: none;
+}
+
+.opencode-session-history-item-new {
+  background: var(--background-secondary);
+  color: var(--text-accent);
 }
 
 .opencode-session-history-item.is-selected {
@@ -696,12 +772,89 @@
 .opencode-session-history-item-title,
 .opencode-session-history-item-detail {
   overflow: hidden;
+  padding-right: 28px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .opencode-session-history-item-title {
+  align-items: center;
+  display: inline-flex;
   font-size: var(--font-ui-small);
+  gap: 6px;
+}
+
+.opencode-session-history-item-icon {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.opencode-session-history-item-icon svg {
+  height: 14px;
+  width: 14px;
+}
+
+.opencode-session-history-rename {
+  --button-radius: 0;
+  --button-shadow: none;
+  --button-shadow-hover: none;
+  --input-height: 24px;
+  appearance: none;
+  -webkit-appearance: none;
+  align-items: center;
+  background: none !important;
+  border: 0 !important;
+  border-radius: 0;
+  box-shadow: none !important;
+  color: var(--text-muted);
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  margin: 0;
+  min-height: 0;
+  min-width: 0;
+  opacity: 0;
+  outline: none;
+  padding: 0;
+  position: absolute;
+  right: 6px;
+  top: 7px;
+  width: 24px;
+}
+
+.opencode-session-history-item:hover .opencode-session-history-rename,
+.opencode-session-history-item:focus .opencode-session-history-rename,
+.opencode-session-history-item.is-editing .opencode-session-history-rename,
+.opencode-session-history-rename:focus,
+.opencode-session-history-rename:focus-visible {
+  opacity: 1;
+}
+
+.opencode-session-history-rename:hover,
+.opencode-session-history-rename:focus,
+.opencode-session-history-rename:focus-visible {
+  background: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: var(--text-normal);
+  outline: none;
+}
+
+.opencode-session-history-rename svg {
+  height: 14px;
+  width: 14px;
+}
+
+.opencode-session-history-title-input {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-normal);
+  font: inherit;
+  min-height: 24px;
+  padding: 2px 6px;
+  width: calc(100% - 28px);
 }
 
 .opencode-session-history-item-detail {

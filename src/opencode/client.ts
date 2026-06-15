@@ -35,10 +35,10 @@ export class OpenCodeClient {
     return extractSessionOptions(response, vaultPath);
   }
 
-  async createSession(): Promise<string> {
+  async createSession(title: string): Promise<string> {
     const response = await this.requestJson<unknown>("/session", {
       method: "POST",
-      body: JSON.stringify({ title: "Obsidian Chat" }),
+      body: JSON.stringify({ title }),
     });
 
     const id = readStringProperty(response, "id");
@@ -47,6 +47,19 @@ export class OpenCodeClient {
     }
 
     return id;
+  }
+
+  async updateSessionTitle(sessionId: string, title: string): Promise<OpenCodeSessionOption> {
+    const response = await this.requestJson<unknown>(`/session/${encodeURIComponent(sessionId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    });
+    return extractSessionOptions([response])[0] ?? {
+      id: sessionId,
+      title,
+      path: "",
+      updatedAt: 0,
+    };
   }
 
   async listSessionChatMessages(sessionId: string): Promise<ChatMessage[]> {
@@ -66,7 +79,7 @@ export class OpenCodeClient {
     });
 
     const response = await this.waitForAssistantResponse(sessionId, previousMessages.length, onUpdate);
-    return extractAssistantResponse(response, { includeFallbackText: true });
+    return extractAssistantResponse(response);
   }
 
   private async listSessionMessages(sessionId: string): Promise<unknown[]> {

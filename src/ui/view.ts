@@ -12,6 +12,8 @@ export class OpenCodeChatView extends ItemView {
   private inputEl!: HTMLTextAreaElement;
   private sendButtonEl!: HTMLButtonElement;
   private sessionHistoryButtonEl!: HTMLButtonElement;
+  private sessionHistoryTitleEl!: HTMLElement;
+  private sessionPickerWrapEl!: HTMLElement;
   private sessionPickerButtonEl!: HTMLButtonElement;
   private modelPickerButtonEl!: HTMLButtonElement;
   private effortPickerButtonEl!: HTMLButtonElement;
@@ -58,13 +60,14 @@ export class OpenCodeChatView extends ItemView {
     container.addClass("opencode-chat-view");
 
     const headerEl = container.createDiv({ cls: "opencode-chat-header" });
-    const sessionPickerEl = headerEl.createDiv({ cls: "opencode-chat-picker-wrap opencode-chat-session-picker-wrap" });
-    this.sessionPickerButtonEl = sessionPickerEl.createEl("button", {
+    this.sessionHistoryTitleEl = headerEl.createDiv({ cls: "opencode-chat-header-title is-hidden", text: "Session history" });
+    this.sessionPickerWrapEl = headerEl.createDiv({ cls: "opencode-chat-picker-wrap opencode-chat-session-picker-wrap" });
+    this.sessionPickerButtonEl = this.sessionPickerWrapEl.createEl("button", {
       cls: "opencode-chat-picker opencode-chat-session-picker",
       attr: { "aria-label": "Session", type: "button" },
     });
     this.sessionPickerButtonEl.addEventListener("click", () => {
-      this.openPickerMenu(sessionPickerEl, {
+      this.openPickerMenu(this.sessionPickerWrapEl, {
         kind: "session",
         options: [{ value: "", label: "New chat" }, ...this.sessionOptions],
         selectedValue: this.plugin.currentSessionId(),
@@ -286,13 +289,20 @@ export class OpenCodeChatView extends ItemView {
 
     for (const message of this.messages) {
       const isActiveAssistantMessage = this.pending && message === this.messages[this.messages.length - 1];
+      const hasDetails = message.role === "assistant" && message.details && message.details.length > 0;
+      const isDetailsOnlyAssistant = hasDetails && !message.text;
       const messageEl = this.historyEl.createDiv({
-        cls: `opencode-chat-message opencode-chat-message-${message.role}`,
+        cls: [
+          "opencode-chat-message",
+          `opencode-chat-message-${message.role}`,
+          isDetailsOnlyAssistant ? "opencode-chat-message-details-only" : "",
+          message.role === "assistant" && message.text ? "opencode-chat-message-final" : "",
+        ].filter(Boolean).join(" "),
       });
-      if (message.role === "assistant" && message.details && message.details.length > 0) {
+      if (hasDetails) {
         this.renderMessageDetails(
           messageEl,
-          message.details,
+          message.details ?? [],
           !message.text && (isActiveAssistantMessage || message === lastAssistantMessage),
         );
       }
@@ -357,8 +367,10 @@ export class OpenCodeChatView extends ItemView {
     this.addCopyButton(wrapperEl, message.text);
 
     if (message.role === "assistant") {
-      const textEl = wrapperEl.createDiv({ cls: "opencode-chat-message-text opencode-chat-message-markdown markdown-rendered" });
-      void MarkdownRenderer.renderMarkdown(message.text, textEl, "", this).catch(() => {
+      const textEl = wrapperEl.createDiv({
+        cls: "opencode-chat-message-text opencode-chat-message-markdown opencode-chat-final markdown-rendered",
+      });
+      void MarkdownRenderer.renderMarkdown(normalizeMarkdownText(message.text), textEl, "", this).catch(() => {
         textEl.setText(message.text);
       });
       return;
@@ -518,6 +530,8 @@ export class OpenCodeChatView extends ItemView {
     this.statusEl.addClass("is-hidden");
     this.historyEl.addClass("is-hidden");
     this.composerEl.addClass("is-hidden");
+    this.sessionPickerWrapEl.addClass("is-hidden");
+    this.sessionHistoryTitleEl.removeClass("is-hidden");
     this.sessionHistoryEl.removeClass("is-hidden");
     this.sessionHistoryButtonEl.setAttribute("aria-label", "Back to chat");
     this.sessionHistoryButtonEl.empty();
@@ -532,6 +546,8 @@ export class OpenCodeChatView extends ItemView {
     this.statusEl.removeClass("is-hidden");
     this.historyEl.removeClass("is-hidden");
     this.composerEl.removeClass("is-hidden");
+    this.sessionHistoryTitleEl.addClass("is-hidden");
+    this.sessionPickerWrapEl.removeClass("is-hidden");
     this.sessionHistoryButtonEl.setAttribute("aria-label", "Open session history");
     this.sessionHistoryButtonEl.empty();
     setIcon(this.sessionHistoryButtonEl, "history");
@@ -541,7 +557,7 @@ export class OpenCodeChatView extends ItemView {
     this.sessionHistoryEl.empty();
 
     const newChatEl = this.sessionHistoryEl.createDiv({
-      cls: "opencode-session-history-item",
+      cls: "opencode-session-history-item opencode-session-history-item-new",
       attr: { role: "button", tabindex: "0", "data-session-id": "" },
     });
     this.renderSessionHistoryItemContent(newChatEl, "New chat", "");
@@ -558,6 +574,7 @@ export class OpenCodeChatView extends ItemView {
         attr: { role: "button", tabindex: "0", "data-session-id": session.id },
       });
       this.renderSessionHistoryItemContent(itemEl, session.title, formatSessionTime(session.updatedAt));
+      this.addSessionRenameButton(itemEl, session);
       this.bindSessionHistoryItem(itemEl, session.id);
     }
 
@@ -565,7 +582,14 @@ export class OpenCodeChatView extends ItemView {
   }
 
   private renderSessionHistoryItemContent(itemEl: HTMLElement, title: string, detail: string): void {
-    itemEl.createDiv({ cls: "opencode-session-history-item-title", text: title });
+    const titleEl = itemEl.createDiv({ cls: "opencode-session-history-item-title" });
+    if (itemEl.hasClass("opencode-session-history-item-new")) {
+      const iconEl = titleEl.createSpan({ cls: "opencode-session-history-item-icon" });
+      setIcon(iconEl, "plus");
+      titleEl.createSpan({ text: title });
+    } else {
+      titleEl.setText(title);
+    }
     if (detail) {
       itemEl.createDiv({ cls: "opencode-session-history-item-detail", text: detail });
     }
@@ -583,6 +607,88 @@ export class OpenCodeChatView extends ItemView {
       event.preventDefault();
       void this.selectSessionFromHistory(sessionId);
     });
+  }
+
+  private addSessionRenameButton(itemEl: HTMLElement, session: OpenCodeSessionOption): void {
+    const buttonEl = itemEl.createEl("button", {
+      cls: "opencode-session-history-rename",
+      attr: { type: "button", "aria-label": "Rename session" },
+    });
+    setIcon(buttonEl, "pencil");
+    buttonEl.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.beginRenameSession(itemEl, session);
+    });
+  }
+
+  private beginRenameSession(itemEl: HTMLElement, session: OpenCodeSessionOption): void {
+    const titleEl = itemEl.querySelector(".opencode-session-history-item-title");
+    if (!(titleEl instanceof HTMLElement)) {
+      return;
+    }
+
+    itemEl.addClass("is-editing");
+    titleEl.empty();
+    const inputEl = titleEl.createEl("input", {
+      cls: "opencode-session-history-title-input",
+      attr: { type: "text" },
+      value: session.title,
+    });
+    inputEl.select();
+    inputEl.focus();
+
+    let canceled = false;
+    let saving = false;
+    const save = async (): Promise<void> => {
+      if (saving || canceled) {
+        return;
+      }
+
+      saving = true;
+      const nextTitle = inputEl.value.trim();
+      if (nextTitle && nextTitle !== session.title) {
+        await this.renameSession(session.id, nextTitle);
+      } else {
+        this.renderSessionHistory();
+      }
+    };
+
+    inputEl.addEventListener("click", (event) => event.stopPropagation());
+    inputEl.addEventListener("keydown", (event) => {
+      event.stopPropagation();
+      if (event.key === "Enter") {
+        event.preventDefault();
+        void save();
+        return;
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        canceled = true;
+        this.renderSessionHistory();
+      }
+    });
+    inputEl.addEventListener("blur", () => {
+      void save();
+    });
+  }
+
+  private async renameSession(sessionId: string, title: string): Promise<void> {
+    try {
+      const updatedSession = await this.plugin.renameSession(sessionId, title);
+      this.sessionList = this.sessionList.map((session) =>
+        session.id === sessionId ? { ...session, title: updatedSession.title } : session,
+      );
+      this.sessionOptions = this.sessionOptions.map((option) =>
+        option.value === sessionId ? { ...option, label: updatedSession.title } : option,
+      );
+      this.renderSessionHistory();
+      this.updatePickerLabels();
+    } catch (error) {
+      new Notice(`Unable to rename session: ${formatError(error)}`);
+      this.renderSessionHistory();
+    }
   }
 
   private async selectSessionFromHistory(sessionId: string): Promise<void> {
@@ -657,8 +763,9 @@ export class OpenCodeChatView extends ItemView {
     }
 
     for (const option of options) {
+      const isNewSession = config.kind === "session" && option.value === "";
       const itemEl = menuEl.createDiv({
-        cls: "opencode-chat-picker-item",
+        cls: `opencode-chat-picker-item${isNewSession ? " opencode-chat-picker-item-new" : ""}`,
         attr: { role: "button", tabindex: "0" },
       });
       itemEl.createSpan({ cls: "opencode-chat-picker-item-label", text: option.label });
@@ -666,6 +773,8 @@ export class OpenCodeChatView extends ItemView {
       const selectedIconEl = itemEl.createSpan({ cls: "opencode-chat-picker-item-icon" });
       if (option.value === config.selectedValue) {
         setIcon(selectedIconEl, "check");
+      } else if (isNewSession) {
+        setIcon(selectedIconEl, "plus");
       } else {
         selectedIconEl.addClass("is-empty");
       }
@@ -815,4 +924,37 @@ function formatSessionTime(value: number): string {
   }
 
   return new Date(value).toLocaleString();
+}
+
+function normalizeMarkdownText(text: string): string {
+  const lines = text
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .split("\n");
+  const normalizedLines: string[] = [];
+  let inFence = false;
+  let previousBlank = false;
+
+  for (const line of lines) {
+    if (line.trim().startsWith("```")) {
+      inFence = !inFence;
+      normalizedLines.push(line);
+      previousBlank = false;
+      continue;
+    }
+
+    if (!inFence && line.trim() === "") {
+      if (!previousBlank) {
+        normalizedLines.push(line);
+      }
+      previousBlank = true;
+      continue;
+    }
+
+    normalizedLines.push(line);
+    previousBlank = false;
+  }
+
+  return normalizedLines.join("\n");
 }

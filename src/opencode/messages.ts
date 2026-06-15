@@ -8,7 +8,7 @@ import {
   readStringProperty,
   stripAnsi,
 } from "./json";
-import { readToolDetailText, toolFallbackText, toolTitle } from "./tool-format";
+import { readToolDetailText, toolTitle } from "./tool-format";
 
 export type AssistantUpdateHandler = (response: OpenCodeAssistantResponse) => void;
 
@@ -17,17 +17,9 @@ export interface OpenCodeAssistantResponse {
   details: ChatMessageDetail[];
 }
 
-export interface ExtractAssistantResponseOptions {
-  includeFallbackText?: boolean;
-}
-
-export function extractAssistantResponse(
-  value: unknown,
-  options: ExtractAssistantResponseOptions = {},
-): OpenCodeAssistantResponse {
+export function extractAssistantResponse(value: unknown): OpenCodeAssistantResponse {
   const parts = readMessageParts(value);
   const texts: string[] = [];
-  const fallbackTexts: string[] = [];
   const details: ChatMessageDetail[] = [];
 
   for (const part of parts) {
@@ -42,14 +34,10 @@ export function extractAssistantResponse(
       details.push(detail);
     }
 
-    const fallbackText = collectAssistantFallbackText(part);
-    if (fallbackText) {
-      fallbackTexts.push(fallbackText);
-    }
   }
 
   return {
-    text: texts.join("\n").trim() || (options.includeFallbackText ? fallbackTexts.join("\n").trim() : ""),
+    text: texts.join("\n").trim(),
     details,
   };
 }
@@ -79,7 +67,7 @@ export function extractChatMessages(value: unknown): ChatMessage[] {
   for (const record of records) {
     const role = readMessageRole(record);
     if (role === "assistant") {
-      const response = extractAssistantResponse(record, { includeFallbackText: true });
+      const response = extractAssistantResponse(record);
       if (response.text || response.details.length > 0) {
         messages.push({ role: "assistant", text: response.text, details: response.details });
       }
@@ -276,15 +264,6 @@ function readDetailText(value: JsonRecord): string {
   }
 
   return "";
-}
-
-function collectAssistantFallbackText(value: unknown): string {
-  if (!isRecord(value)) {
-    return "";
-  }
-
-  const type = readStringProperty(value, "type");
-  return toolFallbackText(value, detailKindForType(type));
 }
 
 function shouldIgnoreDetailType(type: string): boolean {

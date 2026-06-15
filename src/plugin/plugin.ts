@@ -130,6 +130,11 @@ export default class OpenCodeChatPlugin extends Plugin {
     return this.sessionMessages;
   }
 
+  async renameSession(sessionId: string, title: string): Promise<OpenCodeSessionOption> {
+    await this.server.ensureStarted();
+    return await new OpenCodeClient(this.server.clientSettings()).updateSessionTitle(sessionId, title);
+  }
+
   private vaultBasePath(): string | undefined {
     const adapter = this.app.vault.adapter;
     return adapter instanceof FileSystemAdapter ? adapter.getBasePath() : undefined;
@@ -143,7 +148,7 @@ export default class OpenCodeChatPlugin extends Plugin {
     const client = new OpenCodeClient(this.server.clientSettings());
 
     if (!this.sessionId) {
-      this.sessionId = await client.createSession();
+      this.sessionId = await client.createSession(titleFromPrompt(text));
     }
 
     const response = await client.sendMessage(this.sessionId, text, onUpdate);
@@ -181,4 +186,15 @@ export default class OpenCodeChatPlugin extends Plugin {
       listener(messages);
     }
   }
+}
+
+function titleFromPrompt(text: string): string {
+  const normalized = text
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) {
+    return "New chat";
+  }
+
+  return normalized.length > 60 ? `${normalized.slice(0, 57)}...` : normalized;
 }
