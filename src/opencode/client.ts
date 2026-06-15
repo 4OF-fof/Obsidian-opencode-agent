@@ -1,16 +1,17 @@
 import { requestUrl, RequestUrlParam } from "obsidian";
 import { parseServerAddress } from "./address";
-import { JsonRecord, readStringProperty } from "./json";
+import { JsonRecord, isRecord, readArrayProperty, readProperty, readStringProperty } from "./json";
 import {
   AssistantUpdateHandler,
   OpenCodeAssistantResponse,
   assistantMessagesAfter,
+  extractChatMessages,
   extractAssistantResponse,
   isCompletedAssistantMessageRecord,
   isFinalAssistantMessage,
 } from "./messages";
 import { extractModelOptions } from "./models";
-import { OpenCodeChatSettings, OpenCodeModelOption } from "../shared/types";
+import { ChatMessage, OpenCodeChatSettings, OpenCodeModelOption, OpenCodeSessionOption } from "../shared/types";
 
 export { OpenCodeAssistantResponse } from "./messages";
 
@@ -29,6 +30,11 @@ export class OpenCodeClient {
     return extractModelOptions(response);
   }
 
+  async listSessions(vaultPath?: string): Promise<OpenCodeSessionOption[]> {
+    const response = await this.requestJson<unknown>("/session");
+    return extractSessionOptions(response, vaultPath);
+  }
+
   async createSession(): Promise<string> {
     const response = await this.requestJson<unknown>("/session", {
       method: "POST",
@@ -41,6 +47,10 @@ export class OpenCodeClient {
     }
 
     return id;
+  }
+
+  async listSessionChatMessages(sessionId: string): Promise<ChatMessage[]> {
+    return extractChatMessages(await this.listSessionMessages(sessionId));
   }
 
   async sendMessage(
@@ -138,6 +148,134 @@ export class OpenCodeClient {
 
     return body;
   }
+}
+
+function extractSessionOptions(value: unknown, vaultPath?: string): OpenCodeSessionOption[] {
+  const records = readSessionRecords(value);
+  const normalizedVaultPath = vaultPath ? normalizePath(vaultPath) : "";
+  const hasPathMetadata = records.some((record) => readSessionPath(record));
+
+  return records
+    .map((record) => {
+      const id = readStringProperty(record, "id");
+      if (!id) {
+        return null;
+      }
+
+      const path = readSessionPath(record);
+      if (normalizedVaultPath && hasPathMetadata && !isPathInVault(path, normalizedVaultPath)) {
+        return null;
+      }
+
+      return {
+        id,
+        title: readSessionTitle(record) || id,
+        path,
+        updatedAt: readSessionUpdatedAt(record),
+      };
+    })
+    .filter((session): session is OpenCodeSessionOption => session !== null)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+function readSessionRecords(value: unknown): unknown[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  const sessions = readArrayProperty(value, "sessions");
+  if (sessions.length > 0) {
+    return sessions;
+  }
+
+  const data = readArrayProperty(value, "data");
+  if (data.length > 0) {
+    return data;
+  }
+
+  const items = readArrayProperty(value, "items");
+  return items.length > 0 ? items : [];
+}
+
+function readSessionTitle(value: unknown): string {
+  const title =
+    readStringProperty(value, "title") ||
+    readStringProperty(value, "name") ||
+    readStringProperty(readProperty(value, "info"), "title");
+  return title.trim();
+}
+
+function readSessionPath(value: unknown): string {
+  const direct =
+    readStringProperty(value, "cwd") ||
+    readStringProperty(value, "directory") ||
+    readStringProperty(value, "path") ||
+    readStringProperty(value, "workspace");
+  if (direct) {
+    return direct;
+  }
+
+  const project = readProperty(value, "project");
+  if (isRecord(project)) {
+    return (
+      readStringProperty(project, "cwd") ||
+      readStringProperty(project, "directory") ||
+      readStringProperty(project, "path") ||
+      readStringProperty(project, "workspace")
+    );
+  }
+
+  return "";
+}
+
+function readSessionUpdatedAt(value: unknown): number {
+  const direct =
+    readTimeValue(readProperty(value, "updatedAt")) ||
+    readTimeValue(readProperty(value, "updated")) ||
+    readTimeValue(readProperty(value, "createdAt")) ||
+    readTimeValue(readProperty(value, "created"));
+  if (direct > 0) {
+    return direct;
+  }
+
+  const time = readProperty(readProperty(value, "info"), "time") ?? readProperty(value, "time");
+  return (
+    readTimeValue(readProperty(time, "updated")) ||
+    readTimeValue(readProperty(time, "created")) ||
+    0
+  );
+}
+
+function readTimeValue(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value !== "string") {
+    return 0;
+  }
+
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) {
+    return numeric;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isPathInVault(path: string, normalizedVaultPath: string): boolean {
+  const normalizedPath = normalizePath(path);
+  if (normalizedPath === normalizedVaultPath || normalizedPath.startsWith(`${normalizedVaultPath}/`)) {
+    return true;
+  }
+
+  const pathSegments = normalizedPath.split("/").filter(Boolean);
+  return pathSegments.length > 1 && normalizedVaultPath.endsWith(`/${normalizedPath}`);
+}
+
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, "/").replace(/\/+$/g, "").toLowerCase();
 }
 
 function sleep(ms: number): Promise<void> {

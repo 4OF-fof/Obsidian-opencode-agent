@@ -1,4 +1,4 @@
-import { ChatMessageDetail } from "../shared/types";
+import { ChatMessage, ChatMessageDetail } from "../shared/types";
 import {
   JsonRecord,
   isRecord,
@@ -72,8 +72,73 @@ export function isFinalAssistantMessage(value: JsonRecord): boolean {
   return finish !== "tool-calls";
 }
 
+export function extractChatMessages(value: unknown): ChatMessage[] {
+  const records = Array.isArray(value) ? value : [];
+  const messages: ChatMessage[] = [];
+
+  for (const record of records) {
+    const role = readMessageRole(record);
+    if (role === "assistant") {
+      const response = extractAssistantResponse(record, { includeFallbackText: true });
+      if (response.text || response.details.length > 0) {
+        messages.push({ role: "assistant", text: response.text, details: response.details });
+      }
+      continue;
+    }
+
+    if (role === "user") {
+      const text = extractUserMessageText(record);
+      if (text) {
+        messages.push({ role: "user", text });
+      }
+    }
+  }
+
+  return messages;
+}
+
 function isAssistantMessageRecord(value: unknown): value is JsonRecord {
   return isRecord(value) && readStringProperty(readProperty(value, "info"), "role") === "assistant";
+}
+
+function readMessageRole(value: unknown): string {
+  return readStringProperty(readProperty(value, "info"), "role") || readStringProperty(value, "role");
+}
+
+function extractUserMessageText(value: unknown): string {
+  const parts = readMessageParts(value);
+  const texts: string[] = [];
+
+  for (const part of parts) {
+    if (!isRecord(part)) {
+      continue;
+    }
+
+    const type = readStringProperty(part, "type");
+    if (type && type !== "text" && type !== "markdown" && type !== "message") {
+      continue;
+    }
+
+    const directText =
+      readStringProperty(part, "text") ||
+      readStringProperty(part, "content") ||
+      readStringProperty(part, "markdown");
+    if (directText) {
+      texts.push(stripAnsi(directText));
+      continue;
+    }
+
+    const nested = readProperty(part, "data");
+    const nestedText =
+      readStringProperty(nested, "text") ||
+      readStringProperty(nested, "content") ||
+      readStringProperty(nested, "markdown");
+    if (nestedText) {
+      texts.push(stripAnsi(nestedText));
+    }
+  }
+
+  return texts.join("\n").trim();
 }
 
 function readMessageParts(value: unknown): unknown[] {

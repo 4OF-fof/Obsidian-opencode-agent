@@ -39,6 +39,13 @@ export interface OpenCodeModelOption {
   effortOptions: ReasoningEffort[];
 }
 
+export interface OpenCodeSessionOption {
+  id: string;
+  title: string;
+  path: string;
+  updatedAt: number;
+}
+
 export interface ServerAddress {
   host: string;
   port: number;

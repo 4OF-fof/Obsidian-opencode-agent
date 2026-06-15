@@ -1,5 +1,5 @@
 import { ItemView, MarkdownRenderer, Notice, setIcon, WorkspaceLeaf } from "obsidian";
-import { ChatMessage, ChatMessageDetail, ReasoningEffort } from "../shared/types";
+import { ChatMessage, ChatMessageDetail, OpenCodeSessionOption, ReasoningEffort } from "../shared/types";
 import OpenCodeChatPlugin from "../plugin/plugin";
 import { effortLabel, formatError, selectedModelValue, updateEffortFavorite, updateStringFavorite } from "./helpers";
 
@@ -7,17 +7,25 @@ export const VIEW_TYPE_OPENCODE_CHAT = "opencode-chat-view";
 
 export class OpenCodeChatView extends ItemView {
   private historyEl!: HTMLElement;
+  private sessionHistoryEl!: HTMLElement;
+  private composerEl!: HTMLElement;
   private inputEl!: HTMLTextAreaElement;
   private sendButtonEl!: HTMLButtonElement;
+  private sessionHistoryButtonEl!: HTMLButtonElement;
+  private sessionPickerButtonEl!: HTMLButtonElement;
   private modelPickerButtonEl!: HTMLButtonElement;
   private effortPickerButtonEl!: HTMLButtonElement;
   private statusEl!: HTMLElement;
   private activePickerMenuEl: HTMLElement | null = null;
   private activePickerParentEl: HTMLElement | null = null;
+  private sessionList: OpenCodeSessionOption[] = [];
+  private sessionOptions: PickerOption[] = [];
   private modelOptions: PickerOption[] = [];
   private messages: ChatMessage[] = [];
+  private screen: "chat" | "sessions" = "chat";
   private pending = false;
   private activeRequest: ActiveChatRequest | null = null;
+  private unregisterSessionSelection: (() => void) | null = null;
   private nextRequestId = 1;
   private readonly handleDocumentPointerDown = (event: PointerEvent): void => {
     const target = event.target;
@@ -49,11 +57,49 @@ export class OpenCodeChatView extends ItemView {
     container.empty();
     container.addClass("opencode-chat-view");
 
+    const headerEl = container.createDiv({ cls: "opencode-chat-header" });
+    const sessionPickerEl = headerEl.createDiv({ cls: "opencode-chat-picker-wrap opencode-chat-session-picker-wrap" });
+    this.sessionPickerButtonEl = sessionPickerEl.createEl("button", {
+      cls: "opencode-chat-picker opencode-chat-session-picker",
+      attr: { "aria-label": "Session", type: "button" },
+    });
+    this.sessionPickerButtonEl.addEventListener("click", () => {
+      this.openPickerMenu(sessionPickerEl, {
+        kind: "session",
+        options: [{ value: "", label: "New chat" }, ...this.sessionOptions],
+        selectedValue: this.plugin.currentSessionId(),
+        favoriteValues: [],
+        allowFavorite: () => false,
+        onSelect: async (value) => {
+          if (!value) {
+            this.plugin.startNewSession();
+            this.showChat();
+            this.updatePickerLabels();
+            return;
+          }
+
+          await this.plugin.selectSession(value);
+          this.showChat();
+          this.updatePickerLabels();
+        },
+        onToggleFavorite: async () => {},
+      });
+    });
+    this.sessionHistoryButtonEl = headerEl.createEl("button", {
+      cls: "opencode-chat-header-button",
+      attr: { "aria-label": "Open session history", type: "button" },
+    });
+    setIcon(this.sessionHistoryButtonEl, "history");
+    this.sessionHistoryButtonEl.addEventListener("click", () => {
+      void this.showSessionHistory();
+    });
+
     this.statusEl = container.createDiv({ cls: "opencode-chat-status" });
     this.historyEl = container.createDiv({ cls: "opencode-chat-history" });
+    this.sessionHistoryEl = container.createDiv({ cls: "opencode-session-history-list is-hidden" });
 
-    const composerEl = container.createDiv({ cls: "opencode-chat-composer" });
-    this.inputEl = composerEl.createEl("textarea", {
+    this.composerEl = container.createDiv({ cls: "opencode-chat-composer" });
+    this.inputEl = this.composerEl.createEl("textarea", {
       cls: "opencode-chat-input",
       attr: { placeholder: "Message opencode..." },
     });
@@ -67,7 +113,7 @@ export class OpenCodeChatView extends ItemView {
       this.resizeInput();
     });
 
-    const controlsEl = composerEl.createDiv({ cls: "opencode-chat-controls" });
+    const controlsEl = this.composerEl.createDiv({ cls: "opencode-chat-controls" });
     const selectorGroupEl = controlsEl.createDiv({ cls: "opencode-chat-selectors" });
 
     const modelPickerEl = selectorGroupEl.createDiv({ cls: "opencode-chat-picker-wrap opencode-chat-model-picker-wrap" });
@@ -139,13 +185,26 @@ export class OpenCodeChatView extends ItemView {
 
       void this.submit();
     });
+    this.unregisterSessionSelection = this.plugin.onSessionSelectionChange((messages) => {
+      this.messages = messages;
+      this.renderMessages();
+      this.updatePickerLabels();
+      if (this.screen === "sessions") {
+        this.showChat();
+      }
+      void this.populateSessionSelect();
+    });
+    this.messages = this.plugin.currentSessionMessages();
     this.renderMessages();
     this.updatePickerLabels();
     this.resizeInput();
+    void this.populateSessionSelect();
     void this.populateModelSelect();
   }
 
   async onClose(): Promise<void> {
+    this.unregisterSessionSelection?.();
+    this.unregisterSessionSelection = null;
     this.closePickerMenu();
     this.containerEl.empty();
   }
@@ -188,6 +247,7 @@ export class OpenCodeChatView extends ItemView {
 
       assistantMessage.text = response.text;
       assistantMessage.details = response.details;
+      void this.populateSessionSelect();
       this.setStatus("");
     } catch (error) {
       if (!this.isCurrentRequest(activeRequest)) {
@@ -253,6 +313,7 @@ export class OpenCodeChatView extends ItemView {
   private updateControls(): void {
     this.inputEl.disabled = this.pending;
     this.sendButtonEl.disabled = false;
+    this.sessionPickerButtonEl.disabled = this.pending;
     this.modelPickerButtonEl.disabled = this.pending;
     this.effortPickerButtonEl.disabled = this.pending;
     this.sendButtonEl.setAttribute("aria-label", this.pending ? "Stop response" : "Send message");
@@ -399,7 +460,31 @@ export class OpenCodeChatView extends ItemView {
     this.updatePickerLabels();
   }
 
+  private async populateSessionSelect(): Promise<void> {
+    this.sessionList = [];
+    this.sessionOptions = [];
+
+    try {
+      const sessions = await this.plugin.listSessions();
+      this.sessionList = sessions;
+      this.sessionOptions = sessions.map((session) => ({
+        value: session.id,
+        label: session.title,
+      }));
+      if (this.screen === "sessions") {
+        this.renderSessionHistory();
+      }
+    } catch (error) {
+      this.setStatus(`Unable to load sessions: ${formatError(error)}`);
+    }
+
+    this.updatePickerLabels();
+  }
+
   private updatePickerLabels(): void {
+    const selectedSession = this.sessionOptions.find((option) => option.value === this.plugin.currentSessionId());
+    this.setPickerButtonContent(this.sessionPickerButtonEl, selectedSession?.label ?? "New chat");
+
     const selectedModel = selectedModelValue(this.plugin.settings.providerID, this.plugin.settings.modelID);
     const selectedModelOption = this.modelOptions.find((option) => option.value === selectedModel);
     this.setPickerButtonContent(this.modelPickerButtonEl, selectedModelOption?.label ?? "Select model");
@@ -420,6 +505,109 @@ export class OpenCodeChatView extends ItemView {
     buttonEl.createSpan({ cls: "opencode-chat-picker-label", text: label });
     const iconEl = buttonEl.createSpan({ cls: "opencode-chat-picker-chevron" });
     setIcon(iconEl, "chevron-down");
+  }
+
+  private async showSessionHistory(): Promise<void> {
+    if (this.screen === "sessions") {
+      this.showChat();
+      return;
+    }
+
+    this.screen = "sessions";
+    this.closePickerMenu();
+    this.statusEl.addClass("is-hidden");
+    this.historyEl.addClass("is-hidden");
+    this.composerEl.addClass("is-hidden");
+    this.sessionHistoryEl.removeClass("is-hidden");
+    this.sessionHistoryButtonEl.setAttribute("aria-label", "Back to chat");
+    this.sessionHistoryButtonEl.empty();
+    setIcon(this.sessionHistoryButtonEl, "message-circle");
+    await this.populateSessionSelect();
+    this.renderSessionHistory();
+  }
+
+  private showChat(): void {
+    this.screen = "chat";
+    this.sessionHistoryEl.addClass("is-hidden");
+    this.statusEl.removeClass("is-hidden");
+    this.historyEl.removeClass("is-hidden");
+    this.composerEl.removeClass("is-hidden");
+    this.sessionHistoryButtonEl.setAttribute("aria-label", "Open session history");
+    this.sessionHistoryButtonEl.empty();
+    setIcon(this.sessionHistoryButtonEl, "history");
+  }
+
+  private renderSessionHistory(): void {
+    this.sessionHistoryEl.empty();
+
+    const newChatEl = this.sessionHistoryEl.createDiv({
+      cls: "opencode-session-history-item",
+      attr: { role: "button", tabindex: "0", "data-session-id": "" },
+    });
+    this.renderSessionHistoryItemContent(newChatEl, "New chat", "");
+    this.bindSessionHistoryItem(newChatEl, "");
+
+    if (this.sessionList.length === 0) {
+      this.sessionHistoryEl.createDiv({ cls: "opencode-session-history-empty", text: "No sessions in this vault." });
+      return;
+    }
+
+    for (const session of this.sessionList) {
+      const itemEl = this.sessionHistoryEl.createDiv({
+        cls: "opencode-session-history-item",
+        attr: { role: "button", tabindex: "0", "data-session-id": session.id },
+      });
+      this.renderSessionHistoryItemContent(itemEl, session.title, formatSessionTime(session.updatedAt));
+      this.bindSessionHistoryItem(itemEl, session.id);
+    }
+
+    this.updateSelectedSessionHistoryItem();
+  }
+
+  private renderSessionHistoryItemContent(itemEl: HTMLElement, title: string, detail: string): void {
+    itemEl.createDiv({ cls: "opencode-session-history-item-title", text: title });
+    if (detail) {
+      itemEl.createDiv({ cls: "opencode-session-history-item-detail", text: detail });
+    }
+  }
+
+  private bindSessionHistoryItem(itemEl: HTMLElement, sessionId: string): void {
+    itemEl.addEventListener("click", () => {
+      void this.selectSessionFromHistory(sessionId);
+    });
+    itemEl.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+
+      event.preventDefault();
+      void this.selectSessionFromHistory(sessionId);
+    });
+  }
+
+  private async selectSessionFromHistory(sessionId: string): Promise<void> {
+    if (!sessionId) {
+      this.plugin.startNewSession();
+      this.showChat();
+      this.updatePickerLabels();
+      return;
+    }
+
+    await this.plugin.selectSession(sessionId);
+    this.showChat();
+    this.updateSelectedSessionHistoryItem();
+    this.updatePickerLabels();
+  }
+
+  private updateSelectedSessionHistoryItem(): void {
+    const selectedSessionId = this.plugin.currentSessionId();
+    for (const itemEl of Array.from(this.sessionHistoryEl.querySelectorAll(".opencode-session-history-item"))) {
+      if (!(itemEl instanceof HTMLElement)) {
+        continue;
+      }
+
+      itemEl.toggleClass("is-selected", itemEl.dataset.sessionId === selectedSessionId);
+    }
   }
 
   private openPickerMenu(parentEl: HTMLElement, config: PickerMenuConfig): void {
@@ -521,6 +709,10 @@ export class OpenCodeChatView extends ItemView {
       return this.plugin.settings.visibleModelIDs;
     }
 
+    if (config.kind === "session") {
+      return [];
+    }
+
     const selectedModel = selectedModelValue(this.plugin.settings.providerID, this.plugin.settings.modelID);
     return this.favoriteEffortsForModel(selectedModel);
   }
@@ -586,7 +778,7 @@ interface ActiveChatRequest {
 }
 
 interface PickerMenuConfig {
-  kind: "model" | "effort";
+  kind: "model" | "effort" | "session";
   options: PickerOption[];
   selectedValue: string;
   favoriteValues: string[];
@@ -615,4 +807,12 @@ function maxInputHeight(inputEl: HTMLTextAreaElement): number {
   const style = window.getComputedStyle(inputEl);
   const minHeight = parseFloat(style.minHeight) || inputEl.clientHeight || 56;
   return minHeight * 3;
+}
+
+function formatSessionTime(value: number): string {
+  if (!value) {
+    return "";
+  }
+
+  return new Date(value).toLocaleString();
 }

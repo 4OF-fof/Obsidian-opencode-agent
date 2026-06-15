@@ -2,13 +2,17 @@ import { FileSystemAdapter, Notice, Plugin } from "obsidian";
 import { OpenCodeAssistantResponse, OpenCodeClient } from "../opencode/client";
 import { OpenCodeServerManager } from "../opencode/server-manager";
 import { OpenCodeChatSettingTab } from "../ui/settings";
-import { DEFAULT_SETTINGS, OpenCodeChatSettings, OpenCodeModelOption } from "../shared/types";
+import { ChatMessage, DEFAULT_SETTINGS, OpenCodeChatSettings, OpenCodeModelOption, OpenCodeSessionOption } from "../shared/types";
 import { OpenCodeChatView, VIEW_TYPE_OPENCODE_CHAT } from "../ui/view";
+
+export type SessionSelectionListener = (messages: ChatMessage[]) => void;
 
 export default class OpenCodeChatPlugin extends Plugin {
   settings: OpenCodeChatSettings = { ...DEFAULT_SETTINGS };
   readonly server = new OpenCodeServerManager(() => this.settings, () => this.vaultBasePath());
   private sessionId: string | null = null;
+  private sessionMessages: ChatMessage[] = [];
+  private sessionListeners = new Set<SessionSelectionListener>();
   private modelOptions: OpenCodeModelOption[] = [];
   private modelOptionsPromise: Promise<OpenCodeModelOption[]> | null = null;
 
@@ -54,6 +58,25 @@ export default class OpenCodeChatPlugin extends Plugin {
 
   resetSession(): void {
     this.sessionId = null;
+    this.sessionMessages = [];
+  }
+
+  currentSessionId(): string {
+    return this.sessionId ?? "";
+  }
+
+  startNewSession(): void {
+    this.resetSession();
+    this.notifySessionListeners();
+  }
+
+  currentSessionMessages(): ChatMessage[] {
+    return this.sessionMessages;
+  }
+
+  onSessionSelectionChange(listener: SessionSelectionListener): () => void {
+    this.sessionListeners.add(listener);
+    return () => this.sessionListeners.delete(listener);
   }
 
   resetServer(): void {
@@ -94,6 +117,19 @@ export default class OpenCodeChatPlugin extends Plugin {
     return await new OpenCodeClient(this.server.clientSettings()).listModels();
   }
 
+  async listSessions(): Promise<OpenCodeSessionOption[]> {
+    await this.server.ensureStarted();
+    return await new OpenCodeClient(this.server.clientSettings()).listSessions(this.vaultBasePath());
+  }
+
+  async selectSession(sessionId: string): Promise<ChatMessage[]> {
+    await this.server.ensureStarted();
+    this.sessionId = sessionId;
+    this.sessionMessages = await new OpenCodeClient(this.server.clientSettings()).listSessionChatMessages(sessionId);
+    this.notifySessionListeners();
+    return this.sessionMessages;
+  }
+
   private vaultBasePath(): string | undefined {
     const adapter = this.app.vault.adapter;
     return adapter instanceof FileSystemAdapter ? adapter.getBasePath() : undefined;
@@ -110,7 +146,10 @@ export default class OpenCodeChatPlugin extends Plugin {
       this.sessionId = await client.createSession();
     }
 
-    return await client.sendMessage(this.sessionId, text, onUpdate);
+    const response = await client.sendMessage(this.sessionId, text, onUpdate);
+    this.sessionMessages = await client.listSessionChatMessages(this.sessionId);
+    this.notifySessionListeners();
+    return response;
   }
 
   private async activateView(): Promise<void> {
@@ -133,6 +172,13 @@ export default class OpenCodeChatPlugin extends Plugin {
       this.app.workspace.revealLeaf(leaf);
     } else {
       new Notice("Unable to open OpenCode Chat.");
+    }
+  }
+
+  private notifySessionListeners(): void {
+    const messages = this.sessionMessages;
+    for (const listener of this.sessionListeners) {
+      listener(messages);
     }
   }
 }
