@@ -62,6 +62,12 @@ export class OpenCodeClient {
     };
   }
 
+  async deleteSession(sessionId: string): Promise<void> {
+    await this.requestJson<void>(`/session/${encodeURIComponent(sessionId)}`, {
+      method: "DELETE",
+    });
+  }
+
   async listSessionChatMessages(sessionId: string): Promise<ChatMessage[]> {
     return extractChatMessages(await this.listSessionMessages(sessionId));
   }

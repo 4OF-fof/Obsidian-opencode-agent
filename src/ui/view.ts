@@ -551,7 +551,7 @@ export class OpenCodeChatView extends ItemView {
         attr: { role: "button", tabindex: "0", "data-session-id": session.id },
       });
       this.renderSessionHistoryItemContent(itemEl, session.title, formatSessionTime(session.updatedAt));
-      this.addSessionRenameButton(itemEl, session);
+      this.addSessionActionButtons(itemEl, session);
       this.bindSessionHistoryItem(itemEl, session.id);
     }
 
@@ -586,16 +586,28 @@ export class OpenCodeChatView extends ItemView {
     });
   }
 
-  private addSessionRenameButton(itemEl: HTMLElement, session: OpenCodeSessionOption): void {
-    const buttonEl = itemEl.createEl("button", {
-      cls: "opencode-session-history-rename",
+  private addSessionActionButtons(itemEl: HTMLElement, session: OpenCodeSessionOption): void {
+    const actionEl = itemEl.createDiv({ cls: "opencode-session-history-actions" });
+    const renameButtonEl = actionEl.createEl("button", {
+      cls: "opencode-session-history-action opencode-session-history-rename",
       attr: { type: "button", "aria-label": "Rename session" },
     });
-    setIcon(buttonEl, "pencil");
-    buttonEl.addEventListener("click", (event) => {
+    setIcon(renameButtonEl, "pencil");
+    renameButtonEl.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
       this.beginRenameSession(itemEl, session);
+    });
+
+    const deleteButtonEl = actionEl.createEl("button", {
+      cls: "opencode-session-history-action opencode-session-history-delete",
+      attr: { type: "button", "aria-label": "Delete session" },
+    });
+    setIcon(deleteButtonEl, "trash-2");
+    deleteButtonEl.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void this.deleteSession(session);
     });
   }
 
@@ -665,6 +677,26 @@ export class OpenCodeChatView extends ItemView {
     } catch (error) {
       new Notice(`Unable to rename session: ${formatError(error)}`);
       this.renderSessionHistory();
+    }
+  }
+
+  private async deleteSession(session: OpenCodeSessionOption): Promise<void> {
+    if (!window.confirm(`Delete session "${session.title}"?`)) {
+      return;
+    }
+
+    try {
+      await this.plugin.deleteSession(session.id);
+      this.sessionList = this.sessionList.filter((item) => item.id !== session.id);
+      this.sessionOptions = this.sessionOptions.filter((option) => option.value !== session.id);
+      this.renderSessionHistory();
+      this.updatePickerLabels();
+      if (this.plugin.currentSessionId() === "") {
+        this.messages = [];
+        this.renderMessages();
+      }
+    } catch (error) {
+      new Notice(`Unable to delete session: ${formatError(error)}`);
     }
   }
 

@@ -44,6 +44,7 @@
   border-radius: 0;
   box-shadow: none !important;
   color: var(--text-muted);
+  cursor: pointer;
   display: inline-flex;
   flex: 0 0 24px;
   height: 24px;
@@ -59,8 +60,9 @@
 .opencode-chat-header-button:hover,
 .opencode-chat-header-button:focus,
 .opencode-chat-header-button:focus-visible {
-  background: none !important;
+  background: var(--background-modifier-hover) !important;
   border: 0 !important;
+  border-radius: 4px;
   box-shadow: none !important;
   color: var(--text-normal);
   outline: none;
@@ -359,6 +361,7 @@
   border-radius: 999px;
   box-shadow: none !important;
   color: var(--text-normal);
+  cursor: pointer;
   display: inline-flex;
   font-size: var(--font-ui-smaller);
   gap: 4px;
@@ -408,16 +411,18 @@
 }
 
 .opencode-chat-picker:hover {
-  background: none !important;
+  background: var(--background-modifier-hover) !important;
   border: 0 !important;
   box-shadow: none !important;
+  color: var(--text-accent);
 }
 
 .opencode-chat-picker:focus,
 .opencode-chat-picker:focus-visible {
-  background: none !important;
+  background: var(--background-modifier-hover) !important;
   border: 0 !important;
   box-shadow: none !important;
+  color: var(--text-accent);
   outline: none;
 }
 
@@ -490,11 +495,12 @@
 .opencode-chat-picker-item:hover,
 .opencode-chat-picker-item:focus {
   background: var(--background-modifier-hover);
+  color: var(--text-accent);
   outline: none;
 }
 
 .opencode-chat-picker-item-new {
-  background: var(--background-secondary);
+  background: transparent;
   color: var(--text-accent);
   font-weight: 600;
   grid-template-columns: 18px minmax(0, 1fr);
@@ -545,6 +551,7 @@
   border-radius: 0;
   box-shadow: none !important;
   color: var(--text-faint);
+  cursor: pointer;
   display: inline-flex;
   font: inherit;
   height: 18px;
@@ -715,11 +722,12 @@
 .opencode-session-history-item:hover,
 .opencode-session-history-item:focus {
   background: var(--background-modifier-hover);
+  color: var(--text-accent);
   outline: none;
 }
 
 .opencode-session-history-item-new {
-  background: var(--background-secondary);
+  background: transparent;
   color: var(--text-accent);
   font-weight: 600;
   margin-bottom: 6px;
@@ -735,19 +743,29 @@
   color: var(--text-accent);
 }
 
+.opencode-session-history-item-new.is-selected {
+  background: transparent;
+}
+
 .opencode-session-history-item-title,
 .opencode-session-history-item-detail {
+  box-sizing: border-box;
   overflow: hidden;
-  padding-right: 28px;
+  padding-right: 62px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .opencode-session-history-item-title {
   align-items: center;
-  display: inline-flex;
+  display: flex;
   font-size: var(--font-ui-small);
   gap: 6px;
+  height: 24px;
+  line-height: 24px;
+  min-width: 0;
+  position: relative;
+  width: 100%;
 }
 
 .opencode-session-history-item-icon {
@@ -761,7 +779,17 @@
   width: 14px;
 }
 
-.opencode-session-history-rename {
+.opencode-session-history-actions {
+  align-items: center;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  position: absolute;
+  right: 6px;
+  top: 7px;
+}
+
+.opencode-session-history-action {
   --button-radius: 0;
   --button-shadow: none;
   --button-shadow-hover: none;
@@ -774,40 +802,37 @@
   border-radius: 0;
   box-shadow: none !important;
   color: var(--text-muted);
+  cursor: pointer;
   display: inline-flex;
   height: 24px;
   justify-content: center;
   margin: 0;
   min-height: 0;
   min-width: 0;
-  opacity: 0;
   outline: none;
   padding: 0;
-  position: absolute;
-  right: 6px;
-  top: 7px;
   width: 24px;
 }
 
-.opencode-session-history-item:hover .opencode-session-history-rename,
-.opencode-session-history-item:focus .opencode-session-history-rename,
-.opencode-session-history-item.is-editing .opencode-session-history-rename,
-.opencode-session-history-rename:focus,
-.opencode-session-history-rename:focus-visible {
+.opencode-session-history-item:hover .opencode-session-history-actions,
+.opencode-session-history-item:focus .opencode-session-history-actions,
+.opencode-session-history-item.is-editing .opencode-session-history-actions,
+.opencode-session-history-actions:focus-within {
   opacity: 1;
 }
 
-.opencode-session-history-rename:hover,
-.opencode-session-history-rename:focus,
-.opencode-session-history-rename:focus-visible {
-  background: none !important;
+.opencode-session-history-action:hover,
+.opencode-session-history-action:focus,
+.opencode-session-history-action:focus-visible {
+  background: var(--background-modifier-hover) !important;
   border: 0 !important;
+  border-radius: 4px;
   box-shadow: none !important;
   color: var(--text-normal);
   outline: none;
 }
 
-.opencode-session-history-rename svg {
+.opencode-session-history-action svg {
   height: 14px;
   width: 14px;
 }
@@ -816,14 +841,111 @@
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 4px;
+  box-sizing: border-box;
   color: var(--text-normal);
   font: inherit;
+  height: 24px;
+  left: 0;
+  line-height: 20px;
+  margin: 0;
+  max-height: 24px;
+  min-width: 0;
   min-height: 24px;
+  outline: none;
   padding: 2px 6px;
-  width: calc(100% - 28px);
+  position: absolute;
+  right: 62px;
+  top: 0;
+  width: auto;
 }
 
 .opencode-session-history-item-detail {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
+  line-height: 18px;
+}
+
+.opencode-chat-send {
+  cursor: pointer;
+}
+
+.opencode-chat-send:hover,
+.opencode-chat-send:focus,
+.opencode-chat-send:focus-visible {
+  background: var(--background-modifier-hover) !important;
+  border-radius: 4px;
+  color: var(--text-normal);
+}
+
+.opencode-chat-send:disabled {
+  cursor: default;
+}
+
+.opencode-session-history-action {
+  cursor: pointer;
+}
+
+.opencode-session-history-action:hover,
+.opencode-session-history-action:focus,
+.opencode-session-history-action:focus-visible {
+  background: var(--background-modifier-hover) !important;
+  border-radius: 4px;
+}
+
+.opencode-session-history-delete:hover,
+.opencode-session-history-delete:focus-visible {
+  color: var(--text-error);
+}
+
+.opencode-chat-picker-favorite:hover,
+.opencode-chat-picker-favorite:focus,
+.opencode-chat-picker-favorite:focus-visible {
+  background: var(--background-modifier-hover) !important;
+  border-radius: 4px;
+}
+
+.opencode-chat-header-button:focus:not(:hover),
+.opencode-chat-picker:focus:not(:hover),
+.opencode-chat-picker-item:focus:not(:hover),
+.opencode-chat-picker-favorite:focus:not(:hover),
+.opencode-chat-send:focus:not(:hover),
+.opencode-session-history-item:focus:not(:hover),
+.opencode-session-history-action:focus:not(:hover) {
+  background: transparent !important;
+}
+
+.opencode-chat-header-button:focus-visible,
+.opencode-chat-picker:focus-visible,
+.opencode-chat-picker-item:focus-visible,
+.opencode-chat-picker-favorite:focus-visible,
+.opencode-chat-send:focus-visible,
+.opencode-session-history-item:focus-visible,
+.opencode-session-history-action:focus-visible {
+  background: var(--background-modifier-hover) !important;
+}
+
+.opencode-chat-session-picker {
+  width: auto;
+}
+
+.opencode-session-history-item.is-editing {
+  grid-template-rows: 24px auto;
+}
+
+.opencode-session-history-title-input {
+  --input-height: 24px;
+  box-shadow: none !important;
+  height: 24px !important;
+  line-height: 20px;
+  max-height: 24px;
+  min-height: 24px !important;
+  outline: none;
+  padding: 1px 6px;
+}
+
+.opencode-session-history-title-input:focus,
+.opencode-session-history-title-input:focus-visible {
+  box-shadow: none !important;
+  outline: 1px solid var(--background-modifier-border-hover);
+  outline-offset: -1px;
 }

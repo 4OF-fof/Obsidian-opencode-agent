@@ -135,6 +135,15 @@ export default class OpenCodeChatPlugin extends Plugin {
     return await new OpenCodeClient(this.server.clientSettings()).updateSessionTitle(sessionId, title);
   }
 
+  async deleteSession(sessionId: string): Promise<void> {
+    await this.server.ensureStarted();
+    await new OpenCodeClient(this.server.clientSettings()).deleteSession(sessionId);
+    if (this.sessionId === sessionId) {
+      this.resetSession();
+      this.notifySessionListeners();
+    }
+  }
+
   private vaultBasePath(): string | undefined {
     const adapter = this.app.vault.adapter;
     return adapter instanceof FileSystemAdapter ? adapter.getBasePath() : undefined;
