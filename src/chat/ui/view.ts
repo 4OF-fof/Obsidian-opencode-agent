@@ -1,6 +1,7 @@
 import { ItemView, MarkdownRenderer, Notice, setIcon, WorkspaceLeaf } from "obsidian";
 import {
   ChatMessage,
+  ChatMessageBlock,
   ChatMessageDetail,
   OpenCodeQuestionAnswer,
   OpenCodeQuestionRequest,
@@ -39,6 +40,9 @@ export class OpenCodeChatView extends ItemView {
   private activeRequest: ActiveChatRequest | null = null;
   private activeQuestion: ActiveQuestion | null = null;
   private unregisterSessionSelection: (() => void) | null = null;
+  private inputCompositionActive = false;
+  private ignoreNextEnterAfterComposition = false;
+  private compositionEndTimer: number | null = null;
   private nextRequestId = 1;
   private readonly handleDocumentPointerDown = (event: PointerEvent): void => {
     const target = event.target;
@@ -118,8 +122,32 @@ export class OpenCodeChatView extends ItemView {
       cls: "opencode-chat-input",
       attr: { placeholder: DEFAULT_INPUT_PLACEHOLDER },
     });
+    this.inputEl.addEventListener("compositionstart", () => {
+      this.inputCompositionActive = true;
+      this.ignoreNextEnterAfterComposition = false;
+    });
+    this.inputEl.addEventListener("compositionend", () => {
+      this.inputCompositionActive = false;
+      this.ignoreNextEnterAfterComposition = true;
+      if (this.compositionEndTimer !== null) {
+        window.clearTimeout(this.compositionEndTimer);
+      }
+      this.compositionEndTimer = window.setTimeout(() => {
+        this.ignoreNextEnterAfterComposition = false;
+        this.compositionEndTimer = null;
+      }, 0);
+    });
     this.inputEl.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.shiftKey) {
+        if (
+          event.isComposing ||
+          event.keyCode === 229 ||
+          this.inputCompositionActive ||
+          this.ignoreNextEnterAfterComposition
+        ) {
+          return;
+        }
+
         event.preventDefault();
         if (this.activeQuestion) {
           this.submitQuestionAnswer();
@@ -227,6 +255,10 @@ export class OpenCodeChatView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    if (this.compositionEndTimer !== null) {
+      window.clearTimeout(this.compositionEndTimer);
+      this.compositionEndTimer = null;
+    }
     this.unregisterSessionSelection?.();
     this.unregisterSessionSelection = null;
     this.closePickerMenu();
@@ -255,13 +287,16 @@ export class OpenCodeChatView extends ItemView {
     this.updateControls();
 
     try {
-      const updateAssistantMessage = (response: { text: string; details: ChatMessageDetail[] }): void => {
+      const updateAssistantMessage = (
+        response: { text: string; details: ChatMessageDetail[]; blocks?: ChatMessageBlock[] },
+      ): void => {
         if (!this.isCurrentRequest(activeRequest)) {
           return;
         }
 
         assistantMessage.text = response.text;
         assistantMessage.details = response.details;
+        assistantMessage.blocks = response.blocks;
         this.renderMessages();
       };
       const response = await this.plugin.sendChatMessage(
@@ -275,6 +310,7 @@ export class OpenCodeChatView extends ItemView {
 
       assistantMessage.text = response.text;
       assistantMessage.details = response.details;
+      assistantMessage.blocks = response.blocks;
       void this.populateSessionSelect();
       this.setStatus("");
     } catch (error) {
@@ -317,16 +353,30 @@ export class OpenCodeChatView extends ItemView {
     for (const message of this.messages) {
       const isActiveAssistantMessage = this.pending && message === this.messages[this.messages.length - 1];
       const hasDetails = message.role === "assistant" && message.details && message.details.length > 0;
-      const isDetailsOnlyAssistant = hasDetails && !message.text;
+      const hasBlocks = message.role === "assistant" && message.blocks && message.blocks.length > 0;
+      const hasTextBlock = Boolean(message.blocks?.some((block) => block.type === "text" && block.text));
+      const endsWithDetail =
+        message.role === "assistant" &&
+        (hasBlocks
+          ? message.blocks?.[message.blocks.length - 1]?.type === "detail"
+          : hasDetails && !message.text);
+      const isDetailsOnlyAssistant = (hasDetails || hasBlocks) && !message.text && !hasTextBlock;
       const messageEl = this.historyEl.createDiv({
         cls: [
           "opencode-chat-message",
           `opencode-chat-message-${message.role}`,
           isDetailsOnlyAssistant ? "opencode-chat-message-details-only" : "",
+          endsWithDetail ? "opencode-chat-message-ends-detail" : "",
           message.role === "assistant" && message.text ? "opencode-chat-message-final" : "",
         ].filter(Boolean).join(" "),
       });
-      if (hasDetails) {
+      if (hasBlocks) {
+        this.renderMessageBlocks(
+          messageEl,
+          message.blocks ?? [],
+          !message.text && (isActiveAssistantMessage || message === lastAssistantMessage),
+        );
+      } else if (hasDetails) {
         this.renderMessageDetails(
           messageEl,
           message.details ?? [],
@@ -334,9 +384,9 @@ export class OpenCodeChatView extends ItemView {
         );
       }
 
-      if (message.text) {
+      if (!hasBlocks && message.text) {
         this.renderMessageText(messageEl, message);
-      } else if (isActiveAssistantMessage && message.role === "assistant" && (!message.details || message.details.length === 0)) {
+      } else if (isActiveAssistantMessage && message.role === "assistant" && !hasBlocks && (!message.details || message.details.length === 0)) {
         messageEl.createDiv({
           cls: "opencode-chat-message-waiting",
           text: "応答を待機中...",
@@ -720,12 +770,7 @@ export class OpenCodeChatView extends ItemView {
 
   private renderMessageText(parentEl: HTMLElement, message: ChatMessage): void {
     if (message.role === "assistant") {
-      const textEl = parentEl.createDiv({
-        cls: "opencode-chat-message-text opencode-chat-message-markdown opencode-chat-final markdown-rendered",
-      });
-      void MarkdownRenderer.renderMarkdown(normalizeMarkdownText(message.text), textEl, "", this).catch(() => {
-        textEl.setText(message.text);
-      });
+      this.renderAssistantText(parentEl, message.text);
       return;
     }
 
@@ -735,24 +780,49 @@ export class OpenCodeChatView extends ItemView {
     });
   }
 
+  private renderMessageBlocks(parentEl: HTMLElement, blocks: ChatMessageBlock[], openLastDetail: boolean): void {
+    const lastDetailIndex = blocks.findLastIndex((block) => block.type === "detail");
+    blocks.forEach((block, index) => {
+      if (block.type === "text") {
+        this.renderAssistantText(parentEl, block.text);
+        return;
+      }
+
+      this.renderMessageDetail(parentEl, block.detail, openLastDetail && index === lastDetailIndex);
+    });
+  }
+
+  private renderAssistantText(parentEl: HTMLElement, text: string): void {
+    const textEl = parentEl.createDiv({
+      cls: "opencode-chat-message-text opencode-chat-message-markdown opencode-chat-final markdown-rendered",
+    });
+    void MarkdownRenderer.renderMarkdown(normalizeMarkdownText(text), textEl, "", this).catch(() => {
+      textEl.setText(text);
+    });
+  }
+
   private renderMessageDetails(parentEl: HTMLElement, details: ChatMessageDetail[], openLastDetail: boolean): void {
     details.forEach((detail, index) => {
-      const detailEl = parentEl.createEl("details", {
-        cls: `opencode-chat-detail opencode-chat-detail-${detail.kind}`,
-      }) as HTMLDetailsElement;
-      detailEl.open = openLastDetail && index === details.length - 1;
-      detailEl.createEl("summary", {
-        cls: "opencode-chat-detail-summary",
-      });
-      this.renderDetailSummary(detailEl, detail);
-      if (detail.text) {
-        const textWrapEl = detailEl.createDiv({ cls: "opencode-chat-detail-text-wrap" });
-        textWrapEl.createEl("pre", {
-          cls: "opencode-chat-detail-text",
-          text: detail.text,
-        });
-      }
+      this.renderMessageDetail(parentEl, detail, openLastDetail && index === details.length - 1);
     });
+  }
+
+  private renderMessageDetail(parentEl: HTMLElement, detail: ChatMessageDetail, open: boolean): void {
+    const detailEl = parentEl.createEl("details", {
+      cls: `opencode-chat-detail opencode-chat-detail-${detail.kind}`,
+    }) as HTMLDetailsElement;
+    detailEl.open = open;
+    detailEl.createEl("summary", {
+      cls: "opencode-chat-detail-summary",
+    });
+    this.renderDetailSummary(detailEl, detail);
+    if (detail.text) {
+      const textWrapEl = detailEl.createDiv({ cls: "opencode-chat-detail-text-wrap" });
+      textWrapEl.createEl("pre", {
+        cls: "opencode-chat-detail-text",
+        text: detail.text,
+      });
+    }
   }
 
   private renderDetailSummary(detailEl: HTMLElement, detail: ChatMessageDetail): void {

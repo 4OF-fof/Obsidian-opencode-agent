@@ -22,6 +22,7 @@ export interface ChatMessage {
   role: "user" | "assistant" | "error";
   text: string;
   details?: ChatMessageDetail[];
+  blocks?: ChatMessageBlock[];
 }
 
 export interface ChatMessageDetail {
@@ -29,6 +30,10 @@ export interface ChatMessageDetail {
   title: string;
   text: string;
 }
+
+export type ChatMessageBlock =
+  | { type: "text"; text: string }
+  | { type: "detail"; detail: ChatMessageDetail };
 
 export interface OpenCodeModelOption {
   providerID: string;

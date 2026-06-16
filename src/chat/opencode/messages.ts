@@ -1,4 +1,4 @@
-import { ChatMessage, ChatMessageDetail } from "../shared/types";
+import { ChatMessage, ChatMessageBlock, ChatMessageDetail } from "../shared/types";
 import {
   JsonRecord,
   isRecord,
@@ -15,30 +15,34 @@ export type AssistantUpdateHandler = (response: OpenCodeAssistantResponse) => vo
 export interface OpenCodeAssistantResponse {
   text: string;
   details: ChatMessageDetail[];
+  blocks: ChatMessageBlock[];
 }
 
 export function extractAssistantResponse(value: unknown): OpenCodeAssistantResponse {
   const parts = readMessageParts(value);
   const texts: string[] = [];
   const details: ChatMessageDetail[] = [];
+  const blocks: ChatMessageBlock[] = [];
 
   for (const part of parts) {
     const textParts = collectAssistantTextPart(part);
     if (textParts.length > 0) {
       texts.push(...textParts);
+      blocks.push(...textParts.map((text) => ({ type: "text" as const, text })));
       continue;
     }
 
     const detail = collectAssistantDetailPart(part);
     if (detail) {
       details.push(detail);
+      blocks.push({ type: "detail", detail });
     }
-
   }
 
   return {
     text: texts.join("\n").trim(),
     details,
+    blocks,
   };
 }
 
@@ -69,7 +73,12 @@ export function extractChatMessages(value: unknown): ChatMessage[] {
     if (role === "assistant") {
       const response = extractAssistantResponse(record);
       if (response.text || response.details.length > 0) {
-        messages.push({ role: "assistant", text: response.text, details: response.details });
+        messages.push({
+          role: "assistant",
+          text: response.text,
+          details: response.details,
+          blocks: response.blocks,
+        });
       }
       continue;
     }
