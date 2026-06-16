@@ -18,10 +18,11 @@ export interface OpenCodeAssistantResponse {
   blocks: ChatMessageBlock[];
 }
 
+const QUESTION_ANSWER_DETAIL_TITLE = "質問への回答";
+
 export function extractAssistantResponse(value: unknown): OpenCodeAssistantResponse {
   const parts = readMessageParts(value);
   const texts: string[] = [];
-  const details: ChatMessageDetail[] = [];
   const blocks: ChatMessageBlock[] = [];
 
   for (const part of parts) {
@@ -34,15 +35,17 @@ export function extractAssistantResponse(value: unknown): OpenCodeAssistantRespo
 
     const detail = collectAssistantDetailPart(part);
     if (detail) {
-      details.push(detail);
       blocks.push({ type: "detail", detail });
     }
   }
 
+  const mergedBlocks = mergeAdjacentQuestionAnswerDetails(blocks);
+  const details = mergedBlocks.flatMap((block) => block.type === "detail" ? [block.detail] : []);
+
   return {
     text: texts.join("\n").trim(),
     details,
-    blocks,
+    blocks: mergedBlocks,
   };
 }
 
@@ -207,6 +210,34 @@ function collectAssistantDetailPart(value: unknown): ChatMessageDetail | null {
     title: detailTitle(value, type),
     text,
   };
+}
+
+function mergeAdjacentQuestionAnswerDetails(blocks: ChatMessageBlock[]): ChatMessageBlock[] {
+  const mergedBlocks: ChatMessageBlock[] = [];
+
+  for (const block of blocks) {
+    const lastBlock = mergedBlocks[mergedBlocks.length - 1];
+    if (
+      block.type === "detail" &&
+      lastBlock?.type === "detail" &&
+      isQuestionAnswerDetail(block.detail) &&
+      isQuestionAnswerDetail(lastBlock.detail)
+    ) {
+      lastBlock.detail = {
+        ...lastBlock.detail,
+        text: [lastBlock.detail.text, block.detail.text].filter(Boolean).join("\n\n"),
+      };
+      continue;
+    }
+
+    mergedBlocks.push(block.type === "detail" ? { type: "detail", detail: { ...block.detail } } : block);
+  }
+
+  return mergedBlocks;
+}
+
+function isQuestionAnswerDetail(detail: ChatMessageDetail): boolean {
+  return detail.kind === "tool" && detail.title === QUESTION_ANSWER_DETAIL_TITLE;
 }
 
 function detailKindForType(type: string): ChatMessageDetail["kind"] {

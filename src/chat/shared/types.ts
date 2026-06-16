@@ -66,6 +66,12 @@ export interface OpenCodeQuestionRequest {
   id: string;
   sessionID: string;
   questions: OpenCodeQuestionInfo[];
+  sourceRequests?: OpenCodeQuestionSourceRequest[];
+}
+
+export interface OpenCodeQuestionSourceRequest {
+  id: string;
+  questionCount: number;
 }
 
 export type OpenCodeQuestionAnswer = string[];

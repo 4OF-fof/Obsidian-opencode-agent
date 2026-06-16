@@ -27,6 +27,7 @@ import {
   OpenCodeQuestionOption,
   OpenCodeQuestionRequest,
   OpenCodeQuestionResolution,
+  OpenCodeQuestionSourceRequest,
   OpenCodeSessionOption,
 } from "../shared/types";
 
@@ -187,12 +188,14 @@ export class OpenCodeClient {
       if (onQuestion) {
         const question = await this.nextPendingQuestion(sessionId, handledQuestionIds);
         if (question) {
-          handledQuestionIds.add(question.id);
+          for (const source of questionSourceRequests(question)) {
+            handledQuestionIds.add(source.id);
+          }
           const resolution = await onQuestion(question);
           if (resolution.type === "reply") {
-            await this.replyQuestion(sessionId, question.id, resolution.answers);
+            await this.replyQuestionRequest(sessionId, question, resolution.answers);
           } else {
-            await this.rejectQuestion(sessionId, question.id);
+            await this.rejectQuestionRequest(sessionId, question);
           }
           previousSnapshot = "";
           continue;
@@ -210,7 +213,26 @@ export class OpenCodeClient {
     handledQuestionIds: Set<string>,
   ): Promise<OpenCodeQuestionRequest | null> {
     const questions = await this.listSessionQuestions(sessionId).catch((): OpenCodeQuestionRequest[] => []);
-    return questions.find((question) => !handledQuestionIds.has(question.id)) ?? null;
+    return combineQuestionRequests(questions.filter((question) => !handledQuestionIds.has(question.id)));
+  }
+
+  private async replyQuestionRequest(
+    sessionId: string,
+    request: OpenCodeQuestionRequest,
+    answers: OpenCodeQuestionAnswer[],
+  ): Promise<void> {
+    let answerOffset = 0;
+    for (const source of questionSourceRequests(request)) {
+      const sourceAnswers = answers.slice(answerOffset, answerOffset + source.questionCount);
+      answerOffset += source.questionCount;
+      await this.replyQuestion(sessionId, source.id, sourceAnswers);
+    }
+  }
+
+  private async rejectQuestionRequest(sessionId: string, request: OpenCodeQuestionRequest): Promise<void> {
+    for (const source of questionSourceRequests(request)) {
+      await this.rejectQuestion(sessionId, source.id);
+    }
   }
 
   private async requestJson<T>(path: string, init: Partial<RequestUrlParam> = {}): Promise<T> {
@@ -296,9 +318,43 @@ function extractQuestionRequests(value: unknown, sessionId?: string): OpenCodeQu
     .filter((request) => !sessionId || request.sessionID === sessionId);
 }
 
+function combineQuestionRequests(requests: OpenCodeQuestionRequest[]): OpenCodeQuestionRequest | null {
+  const pending = requests.filter((request) => request.questions.length > 0);
+  if (pending.length === 0) {
+    return null;
+  }
+
+  if (pending.length === 1) {
+    return pending[0];
+  }
+
+  return {
+    id: pending.map((request) => request.id).join(","),
+    sessionID: pending[0].sessionID,
+    questions: pending.flatMap((request) => request.questions),
+    sourceRequests: pending.map((request) => ({
+      id: request.id,
+      questionCount: request.questions.length,
+    })),
+  };
+}
+
+function questionSourceRequests(request: OpenCodeQuestionRequest): OpenCodeQuestionSourceRequest[] {
+  return request.sourceRequests ?? [{ id: request.id, questionCount: request.questions.length }];
+}
+
 function readQuestionRecords(value: unknown): unknown[] {
   if (Array.isArray(value)) {
     return value;
+  }
+
+  if (isQuestionRequestRecord(value)) {
+    return [value];
+  }
+
+  const dataValue = readProperty(value, "data");
+  if (isQuestionRequestRecord(dataValue)) {
+    return [dataValue];
   }
 
   const data = readArrayProperty(value, "data");
@@ -310,6 +366,10 @@ function readQuestionRecords(value: unknown): unknown[] {
   return questions.length > 0 ? questions : [];
 }
 
+function isQuestionRequestRecord(value: unknown): boolean {
+  return Boolean(readStringProperty(value, "id") && readStringProperty(value, "sessionID"));
+}
+
 function readQuestionRequest(value: unknown): OpenCodeQuestionRequest | null {
   const id = readStringProperty(value, "id");
   const sessionID = readStringProperty(value, "sessionID");
@@ -317,10 +377,16 @@ function readQuestionRequest(value: unknown): OpenCodeQuestionRequest | null {
     return null;
   }
 
+  const nestedQuestions = readArrayProperty(value, "questions").map(readQuestionInfo).filter(isQuestionInfo);
+  const directQuestion = readQuestionInfo(value);
   return {
     id,
     sessionID,
-    questions: readArrayProperty(value, "questions").map(readQuestionInfo).filter(isQuestionInfo),
+    questions: nestedQuestions.length > 0
+      ? nestedQuestions
+      : isQuestionInfo(directQuestion)
+        ? [directQuestion]
+        : [],
   };
 }
 
