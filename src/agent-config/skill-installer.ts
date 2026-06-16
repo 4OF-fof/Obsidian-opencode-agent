@@ -30,7 +30,7 @@ export class SkillInstaller {
 
     menu.addItem((item) => {
       item
-        .setTitle("Install SKILL")
+        .setTitle("SKILLをインストール")
         .setIcon("download")
         .onClick(() => {
           void this.installSkill(file);
@@ -56,7 +56,7 @@ export class SkillInstaller {
   private async installSkill(folder: TFolder): Promise<void> {
     const vaultBasePath = this.vaultBasePath();
     if (!vaultBasePath) {
-      new Notice("Install skill requires a local vault.");
+      new Notice("Skillのインストールにはローカル保管庫が必要です。");
       return;
     }
 
@@ -70,10 +70,10 @@ export class SkillInstaller {
       const existingLink = await this.readExistingSkillLink(linkPath);
       if (existingLink) {
         if (existingLink === sourcePath) {
-          new Notice(`Skill "${folder.name}" is already installed.`);
+          new Notice(`Skill「${folder.name}」はすでにインストール済みです。`);
         } else {
           new Notice(
-            `A skill named "${folder.name}" already exists in .agents/skills.`,
+            `「${folder.name}」という名前のSkillは .agents/skills にすでに存在します。`,
           );
         }
         return;
@@ -81,11 +81,11 @@ export class SkillInstaller {
 
       const relativeTarget = relative(dirname(linkPath), sourcePath);
       await symlink(relativeTarget, linkPath, "dir");
-      new Notice(`Installed skill "${folder.name}".`);
+      new Notice(`Skill「${folder.name}」をインストールしました。`);
       this.onInstall?.();
     } catch (error) {
       console.error("Failed to install skill", error);
-      new Notice(`Failed to install skill "${folder.name}".`);
+      new Notice(`Skill「${folder.name}」をインストールできませんでした。`);
     }
   }
 

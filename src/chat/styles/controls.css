@@ -329,7 +329,7 @@
   opacity: 0.6;
 }
 
-.opencode-chat-send[aria-label="Stop response"] {
+.opencode-chat-send[aria-label="応答を停止"] {
   color: var(--text-accent);
 }
 

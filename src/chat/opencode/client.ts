@@ -43,7 +43,7 @@ export class OpenCodeClient {
 
     const id = readStringProperty(response, "id");
     if (!id) {
-      throw new Error("opencode did not return a session id.");
+      throw new Error("opencode がセッション ID を返しませんでした。");
     }
 
     return id;
@@ -119,7 +119,7 @@ export class OpenCodeClient {
       await sleep(POLL_INTERVAL_MS);
     }
 
-    throw new Error(`Timed out waiting for opencode response after ${Math.round(RESPONSE_TIMEOUT_MS / 1000)} seconds.`);
+    throw new Error(`opencode の応答待機が ${Math.round(RESPONSE_TIMEOUT_MS / 1000)} 秒でタイムアウトしました。`);
   }
 
   private async requestJson<T>(path: string, init: Partial<RequestUrlParam> = {}): Promise<T> {

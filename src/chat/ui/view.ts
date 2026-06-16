@@ -60,16 +60,16 @@ export class OpenCodeChatView extends ItemView {
     container.addClass("opencode-chat-view");
 
     const headerEl = container.createDiv({ cls: "opencode-chat-header" });
-    this.sessionHistoryTitleEl = headerEl.createDiv({ cls: "opencode-chat-header-title is-hidden", text: "Session history" });
+    this.sessionHistoryTitleEl = headerEl.createDiv({ cls: "opencode-chat-header-title is-hidden", text: "セッション履歴" });
     this.sessionPickerWrapEl = headerEl.createDiv({ cls: "opencode-chat-picker-wrap opencode-chat-session-picker-wrap" });
     this.sessionPickerButtonEl = this.sessionPickerWrapEl.createEl("button", {
       cls: "opencode-chat-picker opencode-chat-session-picker",
-      attr: { "aria-label": "Select session", title: "Select session", type: "button" },
+      attr: { "aria-label": "セッションを選択", title: "セッションを選択", type: "button" },
     });
     this.sessionPickerButtonEl.addEventListener("click", () => {
       this.openPickerMenu(this.sessionPickerWrapEl, {
         kind: "session",
-        options: [{ value: "", label: "New chat" }, ...this.sessionOptions],
+        options: [{ value: "", label: "新規チャット" }, ...this.sessionOptions],
         selectedValue: this.plugin.currentSessionId(),
         favoriteValues: [],
         allowFavorite: () => false,
@@ -90,7 +90,7 @@ export class OpenCodeChatView extends ItemView {
     });
     this.sessionHistoryButtonEl = headerEl.createEl("button", {
       cls: "opencode-chat-header-button",
-      attr: { "aria-label": "Open session history", type: "button" },
+      attr: { "aria-label": "セッション履歴を開く", type: "button" },
     });
     setIcon(this.sessionHistoryButtonEl, "history");
     this.sessionHistoryButtonEl.addEventListener("click", () => {
@@ -104,7 +104,7 @@ export class OpenCodeChatView extends ItemView {
     this.composerEl = container.createDiv({ cls: "opencode-chat-composer" });
     this.inputEl = this.composerEl.createEl("textarea", {
       cls: "opencode-chat-input",
-      attr: { placeholder: "Message opencode..." },
+      attr: { placeholder: "opencode にメッセージ..." },
     });
     this.inputEl.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.shiftKey) {
@@ -122,7 +122,7 @@ export class OpenCodeChatView extends ItemView {
     const modelPickerEl = selectorGroupEl.createDiv({ cls: "opencode-chat-picker-wrap opencode-chat-model-picker-wrap" });
     this.modelPickerButtonEl = modelPickerEl.createEl("button", {
       cls: "opencode-chat-picker opencode-chat-model-picker",
-      attr: { "aria-label": "Model", type: "button" },
+      attr: { "aria-label": "モデル", type: "button" },
     });
     this.modelPickerButtonEl.addEventListener("click", () => {
       this.openPickerMenu(modelPickerEl, {
@@ -149,7 +149,7 @@ export class OpenCodeChatView extends ItemView {
     const effortPickerEl = selectorGroupEl.createDiv({ cls: "opencode-chat-picker-wrap opencode-chat-effort-picker-wrap" });
     this.effortPickerButtonEl = effortPickerEl.createEl("button", {
       cls: "opencode-chat-picker opencode-chat-effort-picker",
-      attr: { "aria-label": "Effort", type: "button" },
+      attr: { "aria-label": "エフォート", type: "button" },
     });
     this.effortPickerButtonEl.addEventListener("click", () => {
       const effortOptions = this.currentEffortOptions();
@@ -177,7 +177,7 @@ export class OpenCodeChatView extends ItemView {
 
     this.sendButtonEl = controlsEl.createEl("button", {
       cls: "opencode-chat-send",
-      attr: { "aria-label": "Send message", type: "button" },
+      attr: { "aria-label": "メッセージを送信", type: "button" },
     });
     setIcon(this.sendButtonEl, "send-horizontal");
     this.sendButtonEl.addEventListener("click", () => {
@@ -258,8 +258,8 @@ export class OpenCodeChatView extends ItemView {
       assistantMessage.role = "error";
       assistantMessage.text = message;
       assistantMessage.details = [];
-      this.setStatus("Request failed.");
-      new Notice(`OpenCode request failed: ${message}`);
+      this.setStatus("リクエストに失敗しました。");
+      new Notice(`OpenCode のリクエストに失敗しました: ${message}`);
     } finally {
       if (this.activeRequest?.id === activeRequest.id) {
         this.pending = false;
@@ -277,7 +277,7 @@ export class OpenCodeChatView extends ItemView {
     if (this.messages.length === 0) {
       this.historyEl.createDiv({
         cls: "opencode-chat-empty",
-        text: "No messages yet.",
+        text: "まだメッセージはありません。",
       });
       return;
     }
@@ -309,7 +309,7 @@ export class OpenCodeChatView extends ItemView {
       } else if (isActiveAssistantMessage && message.role === "assistant" && (!message.details || message.details.length === 0)) {
         messageEl.createDiv({
           cls: "opencode-chat-message-waiting",
-          text: "Waiting for response...",
+          text: "応答を待機中...",
         });
       }
     }
@@ -323,7 +323,7 @@ export class OpenCodeChatView extends ItemView {
     this.sessionPickerButtonEl.disabled = this.pending;
     this.modelPickerButtonEl.disabled = this.pending;
     this.effortPickerButtonEl.disabled = this.pending;
-    this.sendButtonEl.setAttribute("aria-label", this.pending ? "Stop response" : "Send message");
+    this.sendButtonEl.setAttribute("aria-label", this.pending ? "応答を停止" : "メッセージを送信");
     this.sendButtonEl.empty();
     setIcon(this.sendButtonEl, this.pending ? "square" : "send-horizontal");
     if (this.pending) {
@@ -340,7 +340,7 @@ export class OpenCodeChatView extends ItemView {
     this.activeRequest = null;
     this.pending = false;
     this.plugin.resetSession();
-    this.setStatus("Request interrupted.");
+    this.setStatus("リクエストを中断しました。");
     this.renderMessages();
     this.updateControls();
     this.inputEl.focus();
@@ -406,7 +406,7 @@ export class OpenCodeChatView extends ItemView {
     setIcon(iconEl, detail.kind === "tool" ? "arrow-right" : "lightbulb");
     summaryEl.createSpan({
       cls: "opencode-chat-detail-title",
-      text: detail.kind === "reasoning" ? "Thinking" : detail.title,
+      text: detail.kind === "reasoning" ? "思考中" : detail.title,
     });
   }
 
@@ -437,7 +437,7 @@ export class OpenCodeChatView extends ItemView {
       this.modelOptions = selectedModel
         ? [{ value: selectedModel, label: selectedModel, effortOptions: [] }]
         : [];
-      this.setStatus(`Unable to load models: ${formatError(error)}`);
+      this.setStatus(`モデルを読み込めません: ${formatError(error)}`);
     }
 
     this.normalizeSelectedEffort();
@@ -459,7 +459,7 @@ export class OpenCodeChatView extends ItemView {
         this.renderSessionHistory();
       }
     } catch (error) {
-      this.setStatus(`Unable to load sessions: ${formatError(error)}`);
+      this.setStatus(`セッションを読み込めません: ${formatError(error)}`);
     }
 
     this.updatePickerLabels();
@@ -467,11 +467,11 @@ export class OpenCodeChatView extends ItemView {
 
   private updatePickerLabels(): void {
     const selectedSession = this.sessionOptions.find((option) => option.value === this.plugin.currentSessionId());
-    this.setPickerButtonContent(this.sessionPickerButtonEl, selectedSession?.label ?? "New chat");
+    this.setPickerButtonContent(this.sessionPickerButtonEl, selectedSession?.label ?? "新規チャット");
 
     const selectedModel = selectedModelValue(this.plugin.settings.providerID, this.plugin.settings.modelID);
     const selectedModelOption = this.modelOptions.find((option) => option.value === selectedModel);
-    this.setPickerButtonContent(this.modelPickerButtonEl, selectedModelOption?.label ?? "Select model");
+    this.setPickerButtonContent(this.modelPickerButtonEl, selectedModelOption?.label ?? "モデルを選択");
 
     const effortOptions = this.currentEffortOptions();
     this.effortPickerButtonEl.toggleClass("is-hidden", effortOptions.length === 0);
@@ -505,7 +505,7 @@ export class OpenCodeChatView extends ItemView {
     this.sessionPickerWrapEl.addClass("is-hidden");
     this.sessionHistoryTitleEl.removeClass("is-hidden");
     this.sessionHistoryEl.removeClass("is-hidden");
-    this.sessionHistoryButtonEl.setAttribute("aria-label", "Back to chat");
+    this.sessionHistoryButtonEl.setAttribute("aria-label", "チャットに戻る");
     this.sessionHistoryButtonEl.empty();
     setIcon(this.sessionHistoryButtonEl, "message-circle");
     await this.populateSessionSelect();
@@ -520,7 +520,7 @@ export class OpenCodeChatView extends ItemView {
     this.composerEl.removeClass("is-hidden");
     this.sessionHistoryTitleEl.addClass("is-hidden");
     this.sessionPickerWrapEl.removeClass("is-hidden");
-    this.sessionHistoryButtonEl.setAttribute("aria-label", "Open session history");
+    this.sessionHistoryButtonEl.setAttribute("aria-label", "セッション履歴を開く");
     this.sessionHistoryButtonEl.empty();
     setIcon(this.sessionHistoryButtonEl, "history");
   }
@@ -529,7 +529,7 @@ export class OpenCodeChatView extends ItemView {
     this.sessionHistoryEl.empty();
 
     if (this.sessionList.length === 0) {
-      this.sessionHistoryEl.createDiv({ cls: "opencode-session-history-empty", text: "No sessions in this vault." });
+      this.sessionHistoryEl.createDiv({ cls: "opencode-session-history-empty", text: "この保管庫にはセッションがありません。" });
       return;
     }
 
@@ -578,7 +578,7 @@ export class OpenCodeChatView extends ItemView {
     const actionEl = itemEl.createDiv({ cls: "opencode-session-history-actions" });
     const renameButtonEl = actionEl.createEl("button", {
       cls: "opencode-session-history-action opencode-session-history-rename",
-      attr: { type: "button", "aria-label": "Rename session" },
+      attr: { type: "button", "aria-label": "セッション名を変更" },
     });
     setIcon(renameButtonEl, "pencil");
     renameButtonEl.addEventListener("click", (event) => {
@@ -589,7 +589,7 @@ export class OpenCodeChatView extends ItemView {
 
     const deleteButtonEl = actionEl.createEl("button", {
       cls: "opencode-session-history-action opencode-session-history-delete",
-      attr: { type: "button", "aria-label": "Delete session" },
+      attr: { type: "button", "aria-label": "セッションを削除" },
     });
     setIcon(deleteButtonEl, "trash-2");
     deleteButtonEl.addEventListener("click", (event) => {
@@ -663,13 +663,13 @@ export class OpenCodeChatView extends ItemView {
       this.renderSessionHistory();
       this.updatePickerLabels();
     } catch (error) {
-      new Notice(`Unable to rename session: ${formatError(error)}`);
+      new Notice(`セッション名を変更できません: ${formatError(error)}`);
       this.renderSessionHistory();
     }
   }
 
   private async deleteSession(session: OpenCodeSessionOption): Promise<void> {
-    if (!window.confirm(`Delete session "${session.title}"?`)) {
+    if (!window.confirm(`セッション「${session.title}」を削除しますか？`)) {
       return;
     }
 
@@ -684,7 +684,7 @@ export class OpenCodeChatView extends ItemView {
         this.renderMessages();
       }
     } catch (error) {
-      new Notice(`Unable to delete session: ${formatError(error)}`);
+      new Notice(`セッションを削除できません: ${formatError(error)}`);
     }
   }
 
@@ -750,11 +750,11 @@ export class OpenCodeChatView extends ItemView {
     }
 
     if (favoriteOptions.length > 0) {
-      this.renderPickerSection(menuEl, "Favorites", favoriteOptions, config);
+      this.renderPickerSection(menuEl, "お気に入り", favoriteOptions, config);
     }
 
     if (allOptions.length > 0) {
-      this.renderPickerSection(menuEl, "All Options", allOptions, config);
+      this.renderPickerSection(menuEl, "すべてのオプション", allOptions, config);
     }
   }
 
@@ -792,7 +792,7 @@ export class OpenCodeChatView extends ItemView {
       if (config.allowFavorite(option.value)) {
         const favoriteButtonEl = itemEl.createEl("button", {
           cls: "opencode-chat-picker-favorite",
-          attr: { type: "button", "aria-label": "Toggle favorite" },
+          attr: { type: "button", "aria-label": "お気に入りを切り替え" },
         });
         setIcon(favoriteButtonEl, config.favoriteValues.includes(option.value) ? "star" : "star");
         favoriteButtonEl.toggleClass("is-favorite", config.favoriteValues.includes(option.value));

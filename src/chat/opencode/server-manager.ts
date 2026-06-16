@@ -151,17 +151,17 @@ function connectionFailureMessage(
   const detail = formatError(error);
   const output = stderr.trim();
   return [
-    `Unable to connect to opencode at ${serverAddress}.`,
-    `Tried to start: ${command} serve.`,
+    `${serverAddress} の opencode に接続できません。`,
+    `起動を試みたコマンド: ${command} serve.`,
     output || detail,
-    "Make sure opencode is installed and discoverable from your login shell.",
+    "opencode がインストールされ、ログインシェルから見つけられる状態か確認してください。",
   ].filter(Boolean).join(" ");
 }
 
 function commandResolutionFailureMessage(error: unknown): string {
   return [
-    "Unable to find opencode command.",
+    "opencode コマンドが見つかりません。",
     formatError(error),
-    "Make sure opencode is installed and discoverable from your login shell.",
+    "opencode がインストールされ、ログインシェルから見つけられる状態か確認してください。",
   ].filter(Boolean).join(" ");
 }

@@ -3,7 +3,7 @@
   "name": "OpenCode Chat",
   "version": "0.1.0",
   "minAppVersion": "1.5.0",
-  "description": "Minimal chat window that starts and talks to opencode.",
+  "description": "opencode を起動して会話するシンプルなチャット画面。",
   "author": "fof",
   "authorUrl": "",
   "isDesktopOnly": true

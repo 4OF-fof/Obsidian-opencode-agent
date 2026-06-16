@@ -1,5 +1,20 @@
+.opencode-chat-settings-section {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.opencode-chat-settings-section .setting-item-info {
+  margin-bottom: 0;
+  width: 100%;
+}
+
+.opencode-chat-settings-section .setting-item-control {
+  display: none;
+}
+
 .opencode-chat-settings-list {
   margin-bottom: 12px;
+  width: 100%;
 }
 
 .opencode-chat-settings-empty,

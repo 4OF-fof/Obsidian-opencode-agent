@@ -20,7 +20,7 @@ export function readToolDetailText(value: JsonRecord): string {
     readProperty(state, "error");
 
   if (isReadTool(tool)) {
-    return error === undefined ? "" : `Error\n${formatDetailValue(error)}`;
+    return error === undefined ? "" : `エラー\n${formatDetailValue(error)}`;
   }
 
   return formatToolText(args, output, error);
@@ -28,14 +28,14 @@ export function readToolDetailText(value: JsonRecord): string {
 
 export function toolTitle(tool: string, input: unknown): string {
   if (isReadTool(tool)) {
-    return `Read ${pathLabel(readToolPath(input))}`;
+    return `${pathLabel(readToolPath(input))} を読み取り`;
   }
 
   const command = readCommand(input);
   if (command || tool === "bash" || tool === "shell") {
-    return "Run Command";
+    return "コマンドを実行";
   }
-  return tool ? `Tool call: ${tool}` : "Tool call";
+  return tool ? `ツール呼び出し: ${tool}` : "ツール呼び出し";
 }
 
 function formatToolText(input: unknown, output: unknown, error: unknown): string {
@@ -43,17 +43,17 @@ function formatToolText(input: unknown, output: unknown, error: unknown): string
 
   const command = readCommand(input);
   if (command) {
-    parts.push(`Run Command\n${command}`);
+    parts.push(`コマンドを実行\n${command}`);
   } else if (input !== undefined) {
-    parts.push(`Input\n${formatDetailValue(input)}`);
+    parts.push(`入力\n${formatDetailValue(input)}`);
   }
 
   if (output !== undefined) {
-    parts.push(`Output\n${cleanToolOutput(output)}`);
+    parts.push(`出力\n${cleanToolOutput(output)}`);
   }
 
   if (error !== undefined) {
-    parts.push(`Error\n${cleanToolOutput(error)}`);
+    parts.push(`エラー\n${cleanToolOutput(error)}`);
   }
 
   return parts.join("\n\n");

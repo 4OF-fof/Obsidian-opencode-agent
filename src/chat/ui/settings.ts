@@ -16,18 +16,13 @@ export class OpenCodeChatSettingTab extends PluginSettingTab {
 
     const selectedModel = `${this.plugin.settings.providerID}/${this.plugin.settings.modelID}`;
 
+    this.renderServerStatusSetting(containerEl);
+
     new Setting(containerEl)
-      .setName("Model")
-      .setDesc("Only models from connected opencode providers are shown.")
-      .addButton((button) =>
-        button.setButtonText("Reload").onClick(async () => {
-          this.plugin.resetServer();
-          await this.plugin.refreshModels();
-          this.display();
-        }),
-      )
+      .setName("デフォルトモデル")
+      .setDesc("接続済みの opencode プロバイダーのモデルだけを表示します。")
       .addDropdown(async (dropdown) => {
-        dropdown.addOption("", "Use opencode default model");
+        dropdown.addOption("", "opencode のデフォルトモデルを使用");
         dropdown.setValue(selectedModel === "/" ? "" : selectedModel);
 
         try {
@@ -55,20 +50,37 @@ export class OpenCodeChatSettingTab extends PluginSettingTab {
     this.renderFavoriteEffortSettings(containerEl);
   }
 
-  private renderFavoriteModelSettings(containerEl: HTMLElement): void {
-    new Setting(containerEl)
-      .setName("Favorite chat models")
-      .setDesc("Favorites appear at the top of the chat model selector.")
+  private renderServerStatusSetting(containerEl: HTMLElement): void {
+    const setting = new Setting(containerEl)
+      .setName("サーバーステータス")
+      .setDesc("opencode サーバーを確認中...")
       .addButton((button) =>
-        button.setButtonText("Reload").onClick(async () => {
+        button.setButtonText("再読み込み").onClick(async () => {
           this.plugin.resetServer();
           await this.plugin.refreshModels();
           this.display();
         }),
       );
 
-    const listEl = containerEl.createDiv({ cls: "opencode-chat-settings-list" });
-    listEl.createDiv({ cls: "opencode-chat-settings-loading", text: "Loading models..." });
+    void this.populateServerStatus(setting);
+  }
+
+  private async populateServerStatus(setting: Setting): Promise<void> {
+    try {
+      setting.setDesc(await this.plugin.serverStatusText());
+    } catch (error) {
+      setting.setDesc(`接続できません: ${formatError(error)}`);
+    }
+  }
+
+  private renderFavoriteModelSettings(containerEl: HTMLElement): void {
+    const setting = new Setting(containerEl)
+      .setName("お気に入りチャットモデル")
+      .setDesc("お気に入りはチャットのモデルセレクタ上部に表示されます。");
+    setting.settingEl.addClass("opencode-chat-settings-section");
+
+    const listEl = setting.settingEl.createDiv({ cls: "opencode-chat-settings-list" });
+    listEl.createDiv({ cls: "opencode-chat-settings-loading", text: "モデルを読み込み中..." });
     void this.populateFavoriteModelSettings(listEl);
   }
 
@@ -78,7 +90,7 @@ export class OpenCodeChatSettingTab extends PluginSettingTab {
     try {
       const models = await this.plugin.listModels();
       if (models.length === 0) {
-        listEl.createDiv({ cls: "opencode-chat-settings-empty", text: "No connected models found." });
+        listEl.createDiv({ cls: "opencode-chat-settings-empty", text: "接続済みモデルが見つかりません。" });
         return;
       }
 
@@ -92,25 +104,19 @@ export class OpenCodeChatSettingTab extends PluginSettingTab {
     } catch (error) {
       listEl.createDiv({
         cls: "opencode-chat-settings-empty",
-        text: `Unable to load models: ${formatError(error)}`,
+        text: `モデルを読み込めません: ${formatError(error)}`,
       });
     }
   }
 
   private renderFavoriteEffortSettings(containerEl: HTMLElement): void {
-    new Setting(containerEl)
-      .setName("Favorite chat efforts")
-      .setDesc("Favorites are saved per model and appear at the top of the chat effort selector.")
-      .addButton((button) =>
-        button.setButtonText("Reload").onClick(async () => {
-          this.plugin.resetServer();
-          await this.plugin.refreshModels();
-          this.display();
-        }),
-      );
+    const setting = new Setting(containerEl)
+      .setName("お気に入りチャットエフォート")
+      .setDesc("お気に入りはモデルごとに保存され、チャットのエフォートセレクタ上部に表示されます。");
+    setting.settingEl.addClass("opencode-chat-settings-section");
 
-    const listEl = containerEl.createDiv({ cls: "opencode-chat-settings-list" });
-    listEl.createDiv({ cls: "opencode-chat-settings-loading", text: "Loading model efforts..." });
+    const listEl = setting.settingEl.createDiv({ cls: "opencode-chat-settings-list" });
+    listEl.createDiv({ cls: "opencode-chat-settings-loading", text: "モデルエフォートを読み込み中..." });
     void this.populateFavoriteEffortSettings(listEl);
   }
 
@@ -120,7 +126,7 @@ export class OpenCodeChatSettingTab extends PluginSettingTab {
     try {
       const models = (await this.plugin.listModels()).filter((model) => model.effortOptions.length > 0);
       if (models.length === 0) {
-        listEl.createDiv({ cls: "opencode-chat-settings-empty", text: "No model-specific effort options found." });
+        listEl.createDiv({ cls: "opencode-chat-settings-empty", text: "モデル固有のエフォート設定が見つかりません。" });
         return;
       }
 
@@ -143,7 +149,7 @@ export class OpenCodeChatSettingTab extends PluginSettingTab {
     } catch (error) {
       listEl.createDiv({
         cls: "opencode-chat-settings-empty",
-        text: `Unable to load model efforts: ${formatError(error)}`,
+        text: `モデルエフォートを読み込めません: ${formatError(error)}`,
       });
     }
   }
@@ -173,10 +179,10 @@ export class OpenCodeChatSettingTab extends PluginSettingTab {
     const allOptions = options.filter((option) => !favoriteSet.has(option.value));
 
     if (favoriteOptions.length > 0) {
-      this.renderFavoritePickerSection(menuEl, "Favorites", favoriteOptions, favoriteValues, onToggleFavorite);
+      this.renderFavoritePickerSection(menuEl, "お気に入り", favoriteOptions, favoriteValues, onToggleFavorite);
     }
     if (allOptions.length > 0) {
-      this.renderFavoritePickerSection(menuEl, "All Options", allOptions, favoriteValues, onToggleFavorite);
+      this.renderFavoritePickerSection(menuEl, "すべてのオプション", allOptions, favoriteValues, onToggleFavorite);
     }
   }
 
@@ -196,7 +202,7 @@ export class OpenCodeChatSettingTab extends PluginSettingTab {
 
       const favoriteButtonEl = itemEl.createEl("button", {
         cls: "opencode-chat-picker-favorite",
-        attr: { type: "button", "aria-label": "Toggle favorite" },
+        attr: { type: "button", "aria-label": "お気に入りを切り替え" },
       });
       const isFavorite = favoriteValues.includes(option.value);
       setIcon(favoriteButtonEl, "star");

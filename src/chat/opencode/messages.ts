@@ -226,7 +226,7 @@ function detailTitle(value: JsonRecord, type: string): string {
     readStringProperty(value, "tool") ||
     readStringProperty(value, "toolName");
   const kind = detailKindForType(type);
-  const label = kind === "reasoning" ? "Thinking" : kind === "tool" ? "Tool call" : "Detail";
+  const label = kind === "reasoning" ? "思考中" : kind === "tool" ? "ツール呼び出し" : "詳細";
   return name ? `${label}: ${name}` : `${label}: ${type}`;
 }
 

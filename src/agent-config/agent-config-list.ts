@@ -46,14 +46,14 @@ export class Agent {
         title: "Skills",
         icon: "sparkles",
         entries: result.skills,
-        emptyText: "No skills found in .agents.",
+        emptyText: ".agents にSkillが見つかりません。",
         allowUninstall: true,
       });
       this.renderSection(contentEl, {
         title: "AGENTS.md",
         icon: "bot",
         entries: result.agents,
-        emptyText: "No AGENTS.md files found.",
+        emptyText: "AGENTS.md ファイルが見つかりません。",
       });
     } catch (error) {
       console.error("Failed to scan agent config", error);
@@ -61,16 +61,16 @@ export class Agent {
         const contentEl = this.renderFrame(containerEl);
         contentEl.createDiv({
           cls: "opencode-agent-config-empty",
-          text: "Unable to load agent config.",
+          text: "エージェント設定を読み込めません。",
         });
       }
-      new Notice("Unable to load Agent config.");
+      new Notice("エージェント設定を読み込めません。");
     }
   }
 
   private renderFrame(containerEl: HTMLElement): HTMLElement {
     const headerEl = containerEl.createDiv({ cls: "opencode-agent-config-header" });
-    headerEl.createDiv({ cls: "opencode-agent-config-title", text: "Agent config" });
+    headerEl.createDiv({ cls: "opencode-agent-config-title", text: "エージェント設定" });
     return containerEl.createDiv({ cls: "opencode-agent-config-content" });
   }
 
@@ -135,8 +135,8 @@ export class Agent {
         const uninstallButtonEl = actionEl.createEl("button", {
           cls: "opencode-agent-config-action opencode-agent-config-uninstall",
           attr: {
-            "aria-label": `Uninstall ${entry.name}`,
-            title: `Uninstall ${entry.name}`,
+            "aria-label": `${entry.name} をアンインストール`,
+            title: `${entry.name} をアンインストール`,
             type: "button",
           },
         });
@@ -158,25 +158,25 @@ export class Agent {
     try {
       const linkStat = await lstat(entry.uninstallPath);
       if (!linkStat.isSymbolicLink()) {
-        new Notice(`Skill "${entry.name}" is not a linked install.`);
+        new Notice(`Skill「${entry.name}」はリンクされたインストールではありません。`);
         return;
       }
 
       await unlink(entry.uninstallPath);
-      new Notice(`Uninstalled skill "${entry.name}".`);
+      new Notice(`Skill「${entry.name}」をアンインストールしました。`);
       if (this.rootEl) {
         await this.render(this.rootEl);
       }
     } catch (error) {
       console.error("Failed to uninstall skill", error);
-      new Notice(`Failed to uninstall skill "${entry.name}".`);
+      new Notice(`Skill「${entry.name}」をアンインストールできませんでした。`);
     }
   }
 
   private async scan(): Promise<AgentScanResult> {
     const vaultBasePath = this.vaultBasePath();
     if (!vaultBasePath) {
-      throw new Error("Agent config requires a local vault.");
+      throw new Error("エージェント設定にはローカル保管庫が必要です。");
     }
 
     const vaultRoot = resolve(vaultBasePath);
@@ -331,7 +331,7 @@ export class AgentConfigListView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "Agent config";
+    return "エージェント設定";
   }
 
   getIcon(): string {
@@ -413,10 +413,10 @@ async function readSkillMetadata(path: string): Promise<{ name: string; descript
     const content = await readFile(path, "utf8");
     return {
       name: extractFrontmatterValue(content, "name"),
-      description: extractFrontmatterValue(content, "description") || extractMarkdownPreview(content) || "No description.",
+      description: extractFrontmatterValue(content, "description") || extractMarkdownPreview(content) || "説明がありません。",
     };
   } catch {
-    return { name: "", description: "No description." };
+    return { name: "", description: "説明がありません。" };
   }
 }
 

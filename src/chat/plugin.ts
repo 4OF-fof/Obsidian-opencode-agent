@@ -30,7 +30,7 @@ export default class OpenCodeChatPlugin extends Plugin {
 
     this.addCommand({
       id: "open-opencode-chat",
-      name: "Open OpenCode chat",
+      name: "OpenCode Chat を開く",
       callback: () => {
         void this.activateView();
       },
@@ -117,6 +117,13 @@ export default class OpenCodeChatPlugin extends Plugin {
     return await new OpenCodeClient(this.server.clientSettings()).listModels();
   }
 
+  async serverStatusText(): Promise<string> {
+    await this.server.ensureStarted();
+    const health = await new OpenCodeClient(this.server.clientSettings()).health();
+    const address = this.server.clientSettings().serverAddress;
+    return health.version ? `${address} に接続済み (${health.version})` : `${address} に接続済み`;
+  }
+
   async listSessions(): Promise<OpenCodeSessionOption[]> {
     await this.server.ensureStarted();
     return await new OpenCodeClient(this.server.clientSettings()).listSessions(this.vaultBasePath());
@@ -171,7 +178,7 @@ export default class OpenCodeChatPlugin extends Plugin {
     if (leaves.length === 0) {
       const leaf = this.app.workspace.getRightLeaf(false);
       if (!leaf) {
-        new Notice("Unable to open OpenCode Chat.");
+        new Notice("OpenCode Chat を開けません。");
         return;
       }
 
@@ -185,7 +192,7 @@ export default class OpenCodeChatPlugin extends Plugin {
     if (leaf) {
       this.app.workspace.revealLeaf(leaf);
     } else {
-      new Notice("Unable to open OpenCode Chat.");
+      new Notice("OpenCode Chat を開けません。");
     }
   }
 
@@ -202,7 +209,7 @@ function titleFromPrompt(text: string): string {
     .replace(/\s+/g, " ")
     .trim();
   if (!normalized) {
-    return "New chat";
+    return "新規チャット";
   }
 
   return normalized.length > 60 ? `${normalized.slice(0, 57)}...` : normalized;

@@ -29,13 +29,13 @@ export class AgentConfigManager {
       (leaf) => new AgentConfigListView(leaf, this.plugin, this.vaultBasePath),
     );
 
-    this.plugin.addRibbonIcon("bot", "Agent config", () => {
+    this.plugin.addRibbonIcon("bot", "エージェント設定", () => {
       void this.activateView();
     });
 
     this.plugin.addCommand({
       id: "open-agent-config",
-      name: "Open Agent config",
+      name: "エージェント設定を開く",
       callback: () => {
         void this.activateView();
       },
@@ -54,7 +54,7 @@ export class AgentConfigManager {
     if (leaves.length === 0) {
       const leaf = this.plugin.app.workspace.getRightLeaf(false);
       if (!leaf) {
-        new Notice("Unable to open Agent config.");
+        new Notice("エージェント設定を開けません。");
         return;
       }
 
@@ -73,7 +73,7 @@ export class AgentConfigManager {
     if (leaf) {
       this.plugin.app.workspace.revealLeaf(leaf);
     } else {
-      new Notice("Unable to open Agent config.");
+      new Notice("エージェント設定を開けません。");
     }
   }
 
