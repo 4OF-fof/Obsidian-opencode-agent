@@ -5,6 +5,10 @@
   justify-content: space-between;
 }
 
+.opencode-chat-composer.is-answering-question .opencode-chat-controls {
+  justify-content: flex-end;
+}
+
 .opencode-chat-selectors {
   align-items: center;
   display: flex;

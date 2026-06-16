@@ -9,6 +9,10 @@ export function readStringProperty(value: unknown, key: string): string {
   return typeof property === "string" ? property : "";
 }
 
+export function readBooleanProperty(value: unknown, key: string): boolean {
+  return readProperty(value, key) === true;
+}
+
 export function readArrayProperty(value: unknown, key: string): unknown[] {
   const property = readProperty(value, key);
   return Array.isArray(property) ? property : [];

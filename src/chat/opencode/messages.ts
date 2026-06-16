@@ -8,7 +8,7 @@ import {
   readStringProperty,
   stripAnsi,
 } from "./json";
-import { readToolDetailText, toolTitle } from "./tool-format";
+import { isQuestionTool, readToolDetailText, toolTitle } from "./tool-format";
 
 export type AssistantUpdateHandler = (response: OpenCodeAssistantResponse) => void;
 
@@ -189,7 +189,7 @@ function collectAssistantDetailPart(value: unknown): ChatMessageDetail | null {
 
   const text = readDetailText(value);
   const kind = detailKindForType(type);
-  if (!text && kind !== "tool") {
+  if (!text && (kind !== "tool" || isQuestionToolDetail(value))) {
     return null;
   }
 
@@ -217,7 +217,11 @@ function detailTitle(value: JsonRecord, type: string): string {
   if (detailKindForType(type) === "tool") {
     const state = readProperty(value, "state");
     const input = readProperty(value, "input") ?? readProperty(state, "input");
-    return toolTitle(readStringProperty(value, "tool"), input);
+    const tool =
+      readStringProperty(value, "tool") ||
+      readStringProperty(value, "name") ||
+      readStringProperty(value, "toolName");
+    return toolTitle(tool, input);
   }
 
   const name =
@@ -228,6 +232,14 @@ function detailTitle(value: JsonRecord, type: string): string {
   const kind = detailKindForType(type);
   const label = kind === "reasoning" ? "思考中" : kind === "tool" ? "ツール呼び出し" : "詳細";
   return name ? `${label}: ${name}` : `${label}: ${type}`;
+}
+
+function isQuestionToolDetail(value: JsonRecord): boolean {
+  const name =
+    readStringProperty(value, "tool") ||
+    readStringProperty(value, "name") ||
+    readStringProperty(value, "toolName");
+  return isQuestionTool(name);
 }
 
 function readDetailText(value: JsonRecord): string {

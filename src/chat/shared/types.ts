@@ -44,6 +44,31 @@ export interface OpenCodeSessionOption {
   updatedAt: number;
 }
 
+export interface OpenCodeQuestionOption {
+  label: string;
+  description: string;
+}
+
+export interface OpenCodeQuestionInfo {
+  question: string;
+  header: string;
+  options: OpenCodeQuestionOption[];
+  multiple: boolean;
+  custom: boolean;
+}
+
+export interface OpenCodeQuestionRequest {
+  id: string;
+  sessionID: string;
+  questions: OpenCodeQuestionInfo[];
+}
+
+export type OpenCodeQuestionAnswer = string[];
+
+export type OpenCodeQuestionResolution =
+  | { type: "reply"; answers: OpenCodeQuestionAnswer[] }
+  | { type: "reject" };
+
 export interface ServerAddress {
   host: string;
   port: number;

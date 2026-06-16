@@ -1,5 +1,5 @@
 import { FileSystemAdapter, Notice, Plugin } from "obsidian";
-import { OpenCodeAssistantResponse, OpenCodeClient } from "./opencode/client";
+import { OpenCodeAssistantResponse, OpenCodeClient, QuestionResponseHandler } from "./opencode/client";
 import { OpenCodeServerManager } from "./opencode/server-manager";
 import { OpenCodeChatSettingTab } from "./ui/settings";
 import { ChatMessage, DEFAULT_SETTINGS, OpenCodeChatSettings, OpenCodeModelOption, OpenCodeSessionOption } from "./shared/types";
@@ -159,6 +159,7 @@ export default class OpenCodeChatPlugin extends Plugin {
   async sendChatMessage(
     text: string,
     onUpdate?: (response: OpenCodeAssistantResponse) => void,
+    onQuestion?: QuestionResponseHandler,
   ): Promise<OpenCodeAssistantResponse> {
     await this.server.ensureStarted();
     const client = new OpenCodeClient(this.server.clientSettings());
@@ -167,7 +168,7 @@ export default class OpenCodeChatPlugin extends Plugin {
       this.sessionId = await client.createSession(titleFromPrompt(text));
     }
 
-    const response = await client.sendMessage(this.sessionId, text, onUpdate);
+    const response = await client.sendMessage(this.sessionId, text, onUpdate, onQuestion);
     this.sessionMessages = await client.listSessionChatMessages(this.sessionId);
     this.notifySessionListeners();
     return response;

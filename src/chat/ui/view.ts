@@ -1,5 +1,13 @@
 import { ItemView, MarkdownRenderer, Notice, setIcon, WorkspaceLeaf } from "obsidian";
-import { ChatMessage, ChatMessageDetail, OpenCodeSessionOption, ReasoningEffort } from "../shared/types";
+import {
+  ChatMessage,
+  ChatMessageDetail,
+  OpenCodeQuestionAnswer,
+  OpenCodeQuestionRequest,
+  OpenCodeQuestionResolution,
+  OpenCodeSessionOption,
+  ReasoningEffort,
+} from "../shared/types";
 import OpenCodeChatPlugin from "../plugin";
 import { effortLabel, formatError, selectedModelValue, updateEffortFavorite, updateStringFavorite } from "./helpers";
 
@@ -10,6 +18,7 @@ export class OpenCodeChatView extends ItemView {
   private sessionHistoryEl!: HTMLElement;
   private composerEl!: HTMLElement;
   private inputEl!: HTMLTextAreaElement;
+  private questionEl!: HTMLElement;
   private sendButtonEl!: HTMLButtonElement;
   private sessionHistoryButtonEl!: HTMLButtonElement;
   private sessionHistoryTitleEl!: HTMLElement;
@@ -17,6 +26,7 @@ export class OpenCodeChatView extends ItemView {
   private sessionPickerButtonEl!: HTMLButtonElement;
   private modelPickerButtonEl!: HTMLButtonElement;
   private effortPickerButtonEl!: HTMLButtonElement;
+  private selectorGroupEl!: HTMLElement;
   private statusEl!: HTMLElement;
   private activePickerMenuEl: HTMLElement | null = null;
   private activePickerParentEl: HTMLElement | null = null;
@@ -27,6 +37,7 @@ export class OpenCodeChatView extends ItemView {
   private screen: "chat" | "sessions" = "chat";
   private pending = false;
   private activeRequest: ActiveChatRequest | null = null;
+  private activeQuestion: ActiveQuestion | null = null;
   private unregisterSessionSelection: (() => void) | null = null;
   private nextRequestId = 1;
   private readonly handleDocumentPointerDown = (event: PointerEvent): void => {
@@ -102,22 +113,30 @@ export class OpenCodeChatView extends ItemView {
     this.sessionHistoryEl = container.createDiv({ cls: "opencode-session-history-list is-hidden" });
 
     this.composerEl = container.createDiv({ cls: "opencode-chat-composer" });
+    this.questionEl = this.composerEl.createDiv({ cls: "opencode-chat-question is-hidden" });
     this.inputEl = this.composerEl.createEl("textarea", {
       cls: "opencode-chat-input",
-      attr: { placeholder: "opencode にメッセージ..." },
+      attr: { placeholder: DEFAULT_INPUT_PLACEHOLDER },
     });
     this.inputEl.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
+        if (this.activeQuestion) {
+          this.submitQuestionAnswer();
+          return;
+        }
+
         void this.submit();
       }
     });
     this.inputEl.addEventListener("input", () => {
+      this.updateActiveQuestionInput();
       this.resizeInput();
     });
 
     const controlsEl = this.composerEl.createDiv({ cls: "opencode-chat-controls" });
     const selectorGroupEl = controlsEl.createDiv({ cls: "opencode-chat-selectors" });
+    this.selectorGroupEl = selectorGroupEl;
 
     const modelPickerEl = selectorGroupEl.createDiv({ cls: "opencode-chat-picker-wrap opencode-chat-model-picker-wrap" });
     this.modelPickerButtonEl = modelPickerEl.createEl("button", {
@@ -181,6 +200,11 @@ export class OpenCodeChatView extends ItemView {
     });
     setIcon(this.sendButtonEl, "send-horizontal");
     this.sendButtonEl.addEventListener("click", () => {
+      if (this.activeQuestion) {
+        this.submitQuestionAnswer();
+        return;
+      }
+
       if (this.pending) {
         this.interruptCurrentRequest();
         return;
@@ -240,7 +264,11 @@ export class OpenCodeChatView extends ItemView {
         assistantMessage.details = response.details;
         this.renderMessages();
       };
-      const response = await this.plugin.sendChatMessage(text, updateAssistantMessage);
+      const response = await this.plugin.sendChatMessage(
+        text,
+        updateAssistantMessage,
+        (request) => this.presentQuestion(request, activeRequest),
+      );
       if (!this.isCurrentRequest(activeRequest)) {
         return;
       }
@@ -258,12 +286,14 @@ export class OpenCodeChatView extends ItemView {
       assistantMessage.role = "error";
       assistantMessage.text = message;
       assistantMessage.details = [];
+      this.clearActiveQuestion();
       this.setStatus("リクエストに失敗しました。");
       new Notice(`OpenCode のリクエストに失敗しました: ${message}`);
     } finally {
       if (this.activeRequest?.id === activeRequest.id) {
         this.pending = false;
         this.activeRequest = null;
+        this.clearActiveQuestion();
         this.renderMessages();
         this.updateControls();
         this.inputEl.focus();
@@ -318,14 +348,23 @@ export class OpenCodeChatView extends ItemView {
   }
 
   private updateControls(): void {
-    this.inputEl.disabled = this.pending;
-    this.sendButtonEl.disabled = false;
+    const answeringQuestion = this.activeQuestion !== null;
+    const usesComposerInput = this.activeQuestionUsesComposerInput();
+    this.composerEl.toggleClass("is-answering-question", answeringQuestion);
+    this.inputEl.disabled = this.pending && !usesComposerInput;
+    this.inputEl.toggleClass("is-hidden", answeringQuestion && !usesComposerInput);
+    this.questionEl.toggleClass("is-hidden", !answeringQuestion);
+    this.selectorGroupEl.toggleClass("is-hidden", answeringQuestion);
+    this.sendButtonEl.disabled = answeringQuestion && !this.canSubmitQuestionAnswer();
     this.sessionPickerButtonEl.disabled = this.pending;
     this.modelPickerButtonEl.disabled = this.pending;
     this.effortPickerButtonEl.disabled = this.pending;
-    this.sendButtonEl.setAttribute("aria-label", this.pending ? "応答を停止" : "メッセージを送信");
+    this.sendButtonEl.setAttribute(
+      "aria-label",
+      answeringQuestion ? "質問に回答" : this.pending ? "応答を停止" : "メッセージを送信",
+    );
     this.sendButtonEl.empty();
-    setIcon(this.sendButtonEl, this.pending ? "square" : "send-horizontal");
+    setIcon(this.sendButtonEl, this.pending && !answeringQuestion ? "square" : "send-horizontal");
     if (this.pending) {
       this.closePickerMenu();
     }
@@ -339,6 +378,7 @@ export class OpenCodeChatView extends ItemView {
     this.activeRequest.interrupted = true;
     this.activeRequest = null;
     this.pending = false;
+    this.resolveActiveQuestion({ type: "reject" });
     this.plugin.resetSession();
     this.setStatus("リクエストを中断しました。");
     this.renderMessages();
@@ -348,6 +388,325 @@ export class OpenCodeChatView extends ItemView {
 
   private isCurrentRequest(request: ActiveChatRequest): boolean {
     return this.activeRequest?.id === request.id && !request.interrupted;
+  }
+
+  private presentQuestion(
+    request: OpenCodeQuestionRequest,
+    activeRequest: ActiveChatRequest,
+  ): Promise<OpenCodeQuestionResolution> {
+    if (!this.isCurrentRequest(activeRequest)) {
+      return Promise.resolve({ type: "reject" });
+    }
+
+    this.resolveActiveQuestion({ type: "reject" });
+
+    return new Promise((resolve) => {
+      this.activeQuestion = {
+        request,
+        currentIndex: 0,
+        selections: request.questions.map(() => []),
+        customValues: request.questions.map(() => ""),
+        submitting: false,
+        resolve,
+      };
+      this.syncQuestionInput();
+      this.renderQuestionComposer();
+      this.setStatus("OpenCode からの質問に回答してください。");
+      this.updateControls();
+      this.focusQuestionComposer();
+    });
+  }
+
+  private renderQuestionComposer(): void {
+    this.questionEl.empty();
+    const activeQuestion = this.activeQuestion;
+    if (!activeQuestion) {
+      return;
+    }
+
+    const headerEl = this.questionEl.createDiv({ cls: "opencode-chat-question-header" });
+    const iconEl = headerEl.createSpan({ cls: "opencode-chat-question-icon" });
+    setIcon(iconEl, "circle-help");
+    headerEl.createSpan({ cls: "opencode-chat-question-title", text: "質問への回答" });
+    if (activeQuestion.request.questions.length > 1) {
+      headerEl.createSpan({
+        cls: "opencode-chat-question-page-indicator",
+        text: `${activeQuestion.currentIndex + 1} / ${activeQuestion.request.questions.length}`,
+      });
+    }
+
+    const question = activeQuestion.request.questions[activeQuestion.currentIndex];
+    if (!question) {
+      return;
+    }
+
+    const itemEl = this.questionEl.createDiv({ cls: "opencode-chat-question-item" });
+    itemEl.createDiv({
+      cls: "opencode-chat-question-item-header",
+      text: question.header || `質問 ${activeQuestion.currentIndex + 1}`,
+    });
+    itemEl.createDiv({
+      cls: "opencode-chat-question-text",
+      text: question.question,
+    });
+
+    if (question.options.length > 0) {
+      const optionsEl = itemEl.createDiv({
+        cls: `opencode-chat-question-options${question.multiple ? " is-multiple" : ""}`,
+      });
+      for (const option of question.options) {
+        const selected = activeQuestion.selections[activeQuestion.currentIndex]?.includes(option.label) ?? false;
+        const optionButtonEl = optionsEl.createEl("button", {
+          cls: `opencode-chat-question-option${selected ? " is-selected" : ""}`,
+          attr: {
+            type: "button",
+            "aria-pressed": String(selected),
+          },
+        });
+        const optionIconEl = optionButtonEl.createSpan({ cls: "opencode-chat-question-option-icon" });
+        setIcon(optionIconEl, selected ? "check" : question.multiple ? "square" : "circle");
+        const optionTextEl = optionButtonEl.createSpan({ cls: "opencode-chat-question-option-text" });
+        optionTextEl.createSpan({ cls: "opencode-chat-question-option-label", text: option.label });
+        if (option.description) {
+          optionTextEl.createSpan({ cls: "opencode-chat-question-option-description", text: option.description });
+        }
+        optionButtonEl.addEventListener("click", () => {
+          this.toggleQuestionOption(activeQuestion.currentIndex, option.label);
+        });
+      }
+    }
+
+    if (activeQuestion.request.questions.length > 1) {
+      this.renderQuestionPager();
+    }
+  }
+
+  private focusQuestionComposer(): void {
+    if (this.activeQuestionUsesComposerInput()) {
+      this.inputEl.focus();
+      return;
+    }
+
+    const focusTarget = this.questionEl.querySelector("button, textarea");
+    if (focusTarget instanceof HTMLElement) {
+      focusTarget.focus();
+    }
+  }
+
+  private renderQuestionPager(): void {
+    const activeQuestion = this.activeQuestion;
+    if (!activeQuestion) {
+      return;
+    }
+
+    const pagerEl = this.questionEl.createDiv({ cls: "opencode-chat-question-pager" });
+    const previousButtonEl = pagerEl.createEl("button", {
+      cls: "opencode-chat-question-page-button",
+      attr: {
+        type: "button",
+        "aria-label": "前の質問",
+      },
+    });
+    setIcon(previousButtonEl, "chevron-left");
+    previousButtonEl.disabled = activeQuestion.currentIndex === 0;
+    previousButtonEl.addEventListener("click", () => {
+      this.setQuestionPage(activeQuestion.currentIndex - 1);
+    });
+
+    pagerEl.createSpan({
+      cls: "opencode-chat-question-page-count",
+      text: `${activeQuestion.currentIndex + 1} / ${activeQuestion.request.questions.length}`,
+    });
+
+    const nextButtonEl = pagerEl.createEl("button", {
+      cls: "opencode-chat-question-page-button",
+      attr: {
+        type: "button",
+        "aria-label": "次の質問",
+      },
+    });
+    setIcon(nextButtonEl, "chevron-right");
+    nextButtonEl.disabled =
+      activeQuestion.currentIndex >= activeQuestion.request.questions.length - 1 ||
+      this.currentQuestionAnswer().length === 0;
+    nextButtonEl.addEventListener("click", () => {
+      this.setQuestionPage(activeQuestion.currentIndex + 1);
+    });
+  }
+
+  private setQuestionPage(index: number): void {
+    const activeQuestion = this.activeQuestion;
+    if (!activeQuestion) {
+      return;
+    }
+
+    const nextIndex = Math.max(0, Math.min(index, activeQuestion.request.questions.length - 1));
+    if (nextIndex === activeQuestion.currentIndex) {
+      return;
+    }
+
+    this.saveCurrentQuestionInput();
+    activeQuestion.currentIndex = nextIndex;
+    this.syncQuestionInput();
+    this.renderQuestionComposer();
+    this.updateControls();
+    this.focusQuestionComposer();
+  }
+
+  private toggleQuestionOption(questionIndex: number, label: string): void {
+    const activeQuestion = this.activeQuestion;
+    if (!activeQuestion) {
+      return;
+    }
+
+    const question = activeQuestion.request.questions[questionIndex];
+    const current = activeQuestion.selections[questionIndex] ?? [];
+    if (question.multiple) {
+      activeQuestion.selections[questionIndex] = current.includes(label)
+        ? current.filter((value) => value !== label)
+        : [...current, label];
+    } else {
+      activeQuestion.selections[questionIndex] = current.includes(label) ? [] : [label];
+    }
+
+    this.renderQuestionComposer();
+    this.updateControls();
+    this.focusQuestionComposer();
+  }
+
+  private submitQuestionAnswer(): void {
+    const activeQuestion = this.activeQuestion;
+    if (!activeQuestion || !this.canSubmitQuestionAnswer()) {
+      return;
+    }
+
+    activeQuestion.submitting = true;
+    this.saveCurrentQuestionInput();
+    this.updateControls();
+    const answers = activeQuestion.request.questions.map((_, index) => this.questionAnswerAt(index));
+    this.resolveActiveQuestion({ type: "reply", answers });
+    this.setStatus("");
+  }
+
+  private canSubmitQuestionAnswer(): boolean {
+    const activeQuestion = this.activeQuestion;
+    if (!activeQuestion || activeQuestion.submitting) {
+      return false;
+    }
+
+    return activeQuestion.request.questions.every((_, index) => this.questionAnswerAt(index).length > 0);
+  }
+
+  private questionAnswerAt(index: number): OpenCodeQuestionAnswer {
+    const activeQuestion = this.activeQuestion;
+    if (!activeQuestion) {
+      return [];
+    }
+
+    const question = activeQuestion.request.questions[index];
+    const custom = this.questionCustomAnswerAt(index);
+    const selections = activeQuestion.selections[index] ?? [];
+    if (custom && !question.multiple && selections.length === 0) {
+      return [custom];
+    }
+
+    return [
+      ...selections,
+      ...(custom ? [custom] : []),
+    ];
+  }
+
+  private currentQuestionAnswer(): OpenCodeQuestionAnswer {
+    const activeQuestion = this.activeQuestion;
+    if (!activeQuestion) {
+      return [];
+    }
+
+    return this.questionAnswerAt(activeQuestion.currentIndex);
+  }
+
+  private updateActiveQuestionInput(): void {
+    const activeQuestion = this.activeQuestion;
+    if (!activeQuestion) {
+      this.updateControls();
+      return;
+    }
+
+    activeQuestion.customValues[activeQuestion.currentIndex] = this.inputEl.value;
+    this.renderQuestionComposer();
+    this.updateControls();
+  }
+
+  private questionCustomAnswerAt(index: number): string {
+    const activeQuestion = this.activeQuestion;
+    if (!activeQuestion) {
+      return "";
+    }
+
+    if (activeQuestion.currentIndex === index) {
+      return this.inputEl.value.trim();
+    }
+
+    return (activeQuestion.customValues[index] ?? "").trim();
+  }
+
+  private saveCurrentQuestionInput(): void {
+    const activeQuestion = this.activeQuestion;
+    if (!activeQuestion) {
+      return;
+    }
+
+    activeQuestion.customValues[activeQuestion.currentIndex] = this.inputEl.value;
+  }
+
+  private syncQuestionInput(): void {
+    const activeQuestion = this.activeQuestion;
+    if (!activeQuestion) {
+      return;
+    }
+
+    this.inputEl.value = activeQuestion.customValues[activeQuestion.currentIndex] ?? "";
+    this.inputEl.setAttribute("placeholder", this.questionInputPlaceholder());
+    this.resizeInput();
+  }
+
+  private activeQuestionUsesComposerInput(): boolean {
+    return this.activeQuestion !== null;
+  }
+
+  private questionInputPlaceholder(): string {
+    const question = this.activeQuestion?.request.questions[this.activeQuestion.currentIndex];
+    if (!question) {
+      return DEFAULT_INPUT_PLACEHOLDER;
+    }
+
+    return question.options.length > 0 ? "その他・追記事項があれば入力..." : "回答を入力...";
+  }
+
+  private resolveActiveQuestion(resolution: OpenCodeQuestionResolution): void {
+    const activeQuestion = this.activeQuestion;
+    if (!activeQuestion) {
+      return;
+    }
+
+    this.activeQuestion = null;
+    this.questionEl.empty();
+    this.resetQuestionInput();
+    activeQuestion.resolve(resolution);
+    this.updateControls();
+  }
+
+  private clearActiveQuestion(): void {
+    this.activeQuestion = null;
+    this.questionEl.empty();
+    this.resetQuestionInput();
+  }
+
+  private resetQuestionInput(): void {
+    this.composerEl.removeClass("is-answering-question");
+    this.inputEl.value = "";
+    this.inputEl.setAttribute("placeholder", DEFAULT_INPUT_PLACEHOLDER);
+    this.resizeInput();
   }
 
   private setStatus(text: string): void {
@@ -896,6 +1255,15 @@ interface ActiveChatRequest {
   interrupted: boolean;
 }
 
+interface ActiveQuestion {
+  request: OpenCodeQuestionRequest;
+  currentIndex: number;
+  selections: string[][];
+  customValues: string[];
+  submitting: boolean;
+  resolve: (resolution: OpenCodeQuestionResolution) => void;
+}
+
 interface PickerMenuConfig {
   kind: "model" | "effort" | "session";
   options: PickerOption[];
@@ -905,6 +1273,8 @@ interface PickerMenuConfig {
   onSelect: (value: string) => Promise<void>;
   onToggleFavorite: (value: string, enabled: boolean) => Promise<void>;
 }
+
+const DEFAULT_INPUT_PLACEHOLDER = "opencode にメッセージ...";
 
 function sortSelectedFirst(options: PickerOption[], selectedValue: string): PickerOption[] {
   if (!selectedValue) {

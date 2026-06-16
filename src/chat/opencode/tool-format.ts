@@ -19,6 +19,15 @@ export function readToolDetailText(value: JsonRecord): string {
     readProperty(data, "error") ??
     readProperty(state, "error");
 
+  if (isQuestionTool(tool)) {
+    return formatQuestionToolText(
+      output ??
+      readProperty(value, "result") ??
+      readProperty(data, "result") ??
+      readProperty(state, "result"),
+    );
+  }
+
   if (isReadTool(tool)) {
     return error === undefined ? "" : `エラー\n${formatDetailValue(error)}`;
   }
@@ -27,6 +36,10 @@ export function readToolDetailText(value: JsonRecord): string {
 }
 
 export function toolTitle(tool: string, input: unknown): string {
+  if (isQuestionTool(tool)) {
+    return "質問への回答";
+  }
+
   if (isReadTool(tool)) {
     return `${pathLabel(readToolPath(input))} を読み取り`;
   }
@@ -57,6 +70,58 @@ function formatToolText(input: unknown, output: unknown, error: unknown): string
   }
 
   return parts.join("\n\n");
+}
+
+function formatQuestionToolText(value: unknown): string {
+  if (value === undefined || value === null) {
+    return "";
+  }
+
+  const parsed = parseMaybeJson(value);
+  if (typeof parsed === "string") {
+    return formatQuestionAnswerMessage(parsed);
+  }
+
+  const answers = readProperty(parsed, "answers") ?? parsed;
+  if (Array.isArray(answers)) {
+    return answers
+      .map((answer, index) => {
+        const values = Array.isArray(answer) ? answer : [answer];
+        return `質問 ${index + 1}\n${values.map(String).join(", ")}`;
+      })
+      .join("\n\n");
+  }
+
+  return cleanToolOutput(parsed);
+}
+
+function formatQuestionAnswerMessage(value: string): string {
+  const matches = [...value.matchAll(/"([^"]+)"="([^"]*)"/g)];
+  if (matches.length === 0) {
+    return stripQuestionContinueText(value).trim();
+  }
+
+  return matches
+    .map((match) => `${match[1]}\n${match[2]}`)
+    .join("\n\n");
+}
+
+function stripQuestionContinueText(value: string): string {
+  return value
+    .replace(/^User has answered your questions:\s*/i, "")
+    .replace(/You can now continue with the user's answers in mind\.?/i, "");
+}
+
+function parseMaybeJson(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
 }
 
 function readCommand(input: unknown): string {
@@ -99,6 +164,11 @@ function pathLabel(path: string): string {
 
 function isReadTool(tool: string): boolean {
   return normalizePartType(tool) === "read";
+}
+
+export function isQuestionTool(tool: string): boolean {
+  const normalized = normalizePartType(tool);
+  return normalized === "question" || normalized === "questiontool" || normalized === "requestuserinput";
 }
 
 function cleanToolOutput(value: unknown): string {

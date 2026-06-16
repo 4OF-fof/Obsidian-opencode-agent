@@ -1,6 +1,13 @@
 import { requestUrl, RequestUrlParam } from "obsidian";
 import { parseServerAddress } from "./address";
-import { JsonRecord, isRecord, readArrayProperty, readProperty, readStringProperty } from "./json";
+import {
+  JsonRecord,
+  isRecord,
+  readArrayProperty,
+  readBooleanProperty,
+  readProperty,
+  readStringProperty,
+} from "./json";
 import {
   AssistantUpdateHandler,
   OpenCodeAssistantResponse,
@@ -11,12 +18,24 @@ import {
   isFinalAssistantMessage,
 } from "./messages";
 import { extractModelOptions } from "./models";
-import { ChatMessage, OpenCodeChatSettings, OpenCodeModelOption, OpenCodeSessionOption } from "../shared/types";
+import {
+  ChatMessage,
+  OpenCodeChatSettings,
+  OpenCodeModelOption,
+  OpenCodeQuestionAnswer,
+  OpenCodeQuestionInfo,
+  OpenCodeQuestionOption,
+  OpenCodeQuestionRequest,
+  OpenCodeQuestionResolution,
+  OpenCodeSessionOption,
+} from "../shared/types";
 
 export { OpenCodeAssistantResponse } from "./messages";
 
 const RESPONSE_TIMEOUT_MS = 10 * 60 * 1000;
 const POLL_INTERVAL_MS = 500;
+
+export type QuestionResponseHandler = (request: OpenCodeQuestionRequest) => Promise<OpenCodeQuestionResolution>;
 
 export class OpenCodeClient {
   constructor(private readonly settings: OpenCodeChatSettings) {}
@@ -76,6 +95,7 @@ export class OpenCodeClient {
     sessionId: string,
     text: string,
     onUpdate?: AssistantUpdateHandler,
+    onQuestion?: QuestionResponseHandler,
   ): Promise<OpenCodeAssistantResponse> {
     const previousMessages = await this.listSessionMessages(sessionId);
 
@@ -84,8 +104,54 @@ export class OpenCodeClient {
       body: JSON.stringify(this.messageBody(text)),
     });
 
-    const response = await this.waitForAssistantResponse(sessionId, previousMessages.length, onUpdate);
+    const response = await this.waitForAssistantResponse(sessionId, previousMessages.length, onUpdate, onQuestion);
     return extractAssistantResponse(response);
+  }
+
+  async listSessionQuestions(sessionId: string): Promise<OpenCodeQuestionRequest[]> {
+    try {
+      const response = await this.requestJson<unknown>(`/api/session/${encodeURIComponent(sessionId)}/question`);
+      return extractQuestionRequests(response, sessionId);
+    } catch {
+      const response = await this.requestJson<unknown>("/question");
+      return extractQuestionRequests(response, sessionId);
+    }
+  }
+
+  async replyQuestion(
+    sessionId: string,
+    requestId: string,
+    answers: OpenCodeQuestionAnswer[],
+  ): Promise<void> {
+    const body = JSON.stringify({ answers });
+
+    try {
+      await this.requestJson<void>(
+        `/api/session/${encodeURIComponent(sessionId)}/question/${encodeURIComponent(requestId)}/reply`,
+        { method: "POST", body },
+      );
+      return;
+    } catch {
+      await this.requestJson<void>(
+        `/question/${encodeURIComponent(requestId)}/reply`,
+        { method: "POST", body },
+      );
+    }
+  }
+
+  async rejectQuestion(sessionId: string, requestId: string): Promise<void> {
+    try {
+      await this.requestJson<void>(
+        `/api/session/${encodeURIComponent(sessionId)}/question/${encodeURIComponent(requestId)}/reject`,
+        { method: "POST" },
+      );
+      return;
+    } catch {
+      await this.requestJson<void>(
+        `/question/${encodeURIComponent(requestId)}/reject`,
+        { method: "POST" },
+      );
+    }
   }
 
   private async listSessionMessages(sessionId: string): Promise<unknown[]> {
@@ -96,9 +162,11 @@ export class OpenCodeClient {
     sessionId: string,
     previousMessageCount: number,
     onUpdate?: AssistantUpdateHandler,
+    onQuestion?: QuestionResponseHandler,
   ): Promise<unknown[]> {
     const deadline = Date.now() + RESPONSE_TIMEOUT_MS;
     let previousSnapshot = "";
+    const handledQuestionIds = new Set<string>();
 
     while (Date.now() < deadline) {
       const messages = await this.listSessionMessages(sessionId);
@@ -116,10 +184,33 @@ export class OpenCodeClient {
         return completedMessages;
       }
 
+      if (onQuestion) {
+        const question = await this.nextPendingQuestion(sessionId, handledQuestionIds);
+        if (question) {
+          handledQuestionIds.add(question.id);
+          const resolution = await onQuestion(question);
+          if (resolution.type === "reply") {
+            await this.replyQuestion(sessionId, question.id, resolution.answers);
+          } else {
+            await this.rejectQuestion(sessionId, question.id);
+          }
+          previousSnapshot = "";
+          continue;
+        }
+      }
+
       await sleep(POLL_INTERVAL_MS);
     }
 
     throw new Error(`opencode の応答待機が ${Math.round(RESPONSE_TIMEOUT_MS / 1000)} 秒でタイムアウトしました。`);
+  }
+
+  private async nextPendingQuestion(
+    sessionId: string,
+    handledQuestionIds: Set<string>,
+  ): Promise<OpenCodeQuestionRequest | null> {
+    const questions = await this.listSessionQuestions(sessionId).catch((): OpenCodeQuestionRequest[] => []);
+    return questions.find((question) => !handledQuestionIds.has(question.id)) ?? null;
   }
 
   private async requestJson<T>(path: string, init: Partial<RequestUrlParam> = {}): Promise<T> {
@@ -195,6 +286,67 @@ function extractSessionOptions(value: unknown, vaultPath?: string): OpenCodeSess
     })
     .filter((session): session is OpenCodeSessionOption => session !== null)
     .sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+function extractQuestionRequests(value: unknown, sessionId?: string): OpenCodeQuestionRequest[] {
+  const records = readQuestionRecords(value);
+  return records
+    .map((record) => readQuestionRequest(record))
+    .filter((request): request is OpenCodeQuestionRequest => request !== null)
+    .filter((request) => !sessionId || request.sessionID === sessionId);
+}
+
+function readQuestionRecords(value: unknown): unknown[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  const data = readArrayProperty(value, "data");
+  if (data.length > 0) {
+    return data;
+  }
+
+  const questions = readArrayProperty(value, "questions");
+  return questions.length > 0 ? questions : [];
+}
+
+function readQuestionRequest(value: unknown): OpenCodeQuestionRequest | null {
+  const id = readStringProperty(value, "id");
+  const sessionID = readStringProperty(value, "sessionID");
+  if (!id || !sessionID) {
+    return null;
+  }
+
+  return {
+    id,
+    sessionID,
+    questions: readArrayProperty(value, "questions").map(readQuestionInfo).filter(isQuestionInfo),
+  };
+}
+
+function readQuestionInfo(value: unknown): OpenCodeQuestionInfo {
+  return {
+    question: readStringProperty(value, "question"),
+    header: readStringProperty(value, "header"),
+    options: readArrayProperty(value, "options").map(readQuestionOption).filter(isQuestionOption),
+    multiple: readBooleanProperty(value, "multiple"),
+    custom: readBooleanProperty(value, "custom"),
+  };
+}
+
+function readQuestionOption(value: unknown): OpenCodeQuestionOption {
+  return {
+    label: readStringProperty(value, "label"),
+    description: readStringProperty(value, "description"),
+  };
+}
+
+function isQuestionInfo(value: OpenCodeQuestionInfo): boolean {
+  return Boolean(value.question || value.header || value.options.length > 0 || value.custom);
+}
+
+function isQuestionOption(value: OpenCodeQuestionOption): boolean {
+  return Boolean(value.label);
 }
 
 function readSessionRecords(value: unknown): unknown[] {
